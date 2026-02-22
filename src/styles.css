@@ -1,0 +1,83 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+
+#toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #252526;
+  border-bottom: 1px solid #333;
+  font-size: 13px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#filename {
+  font-weight: 600;
+  color: #ccc;
+}
+
+#status {
+  color: #888;
+  font-size: 12px;
+}
+
+#editor {
+  height: calc(100% - 37px);
+  overflow: hidden;
+}
+
+/* CodeMirror overrides */
+.cm-editor {
+  height: 100%;
+  font-size: 15px;
+  background: #1e1e1e;
+}
+
+.cm-editor .cm-scroller {
+  padding: 16px 24px;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  line-height: 1.6;
+}
+
+.cm-editor .cm-content {
+  max-width: 720px;
+}
+
+.cm-editor .cm-gutters {
+  background: #1e1e1e;
+  border-right: 1px solid #333;
+  color: #555;
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: #252526;
+  color: #888;
+}
+
+.cm-editor .cm-activeLine {
+  background: #252526;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: #d4d4d4;
+}
+
+.cm-editor .cm-selectionBackground {
+  background: #264f78 !important;
+}
+
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: #264f78 !important;
+}
