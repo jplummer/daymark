@@ -90,6 +90,8 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Done when:** You can open a NotePlan daily note, edit it with live preview, save, and confirm NotePlan sees the changes.
 
+**Status: Complete.** Walking skeleton works. Edits round-trip to NotePlan. Added date navigation (prev/today/next) and live preview decorations (headings, bold, italic, strikethrough, inline code, wiki-links, task checkboxes). Line numbers removed per preference.
+
 ### Phase 2: File navigation and watching
 
 **Goal:** Browse and open any note in the NotePlan directory. React to external file changes.
@@ -152,8 +154,21 @@ At this point Daymark should be a functional daily driver. Remaining Priority 1 
 
 ---
 
+## Discovered: NotePlan File Conventions
+
+Observed during Phase 1 (Setapp version):
+
+- **Storage location:** `~/Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp/` — not in iCloud Drive. The Setapp build uses a sandboxed container, not the `iCloud~co~noteplan~NotePlan3` path documented elsewhere. CloudKit sync is handled by NotePlan internally.
+- **File extension:** `.txt`, not `.md`.
+- **Daily notes:** `Calendar/YYYYMMDD.txt` — flat directory, no year/month subfolders.
+- **Project notes:** `Notes/` directory with subdirectories (e.g. `Notes/Personal/`, `Notes/Invoca/`).
+- **Special folders:** `Notes/@Archive`, `Notes/@Templates`, `Notes/@Trash`.
+- **Task states observed so far:** `- [ ]` (open), `- [x]` (done), `- [-]` (cancelled). More states likely exist — catalog as we encounter them.
+
 ## Open Questions
 
-- **NotePlan file conventions:** We need to document the directory structure, filename patterns, and any front-matter conventions NotePlan uses. This should happen during Phase 1 as we inspect real files.
-- **Task state syntax:** NotePlan uses more than just `- [ ]` / `- [x]`. Need to catalog the full set of states (cancelled, scheduled, etc.) and their syntax.
-- **Template format:** How does NotePlan store and apply templates? Need to inspect the template files before implementing in Phase 4+.
+- **Weekly notes:** Where are they stored? Filename pattern? Need to inspect.
+- **Task state syntax:** Full set of states beyond `[ ]`, `[x]`, `[-]` — need to catalog.
+- **Template format:** How does NotePlan store and apply templates? Inspect `Notes/@Templates/`.
+- **Scheduling syntax:** How exactly does `>date` and `>today` appear in files? Need examples from real notes.
+- **iCloud Drive vs Setapp container:** The FEATURES.md sync strategy mentions iCloud Drive, but the Setapp version uses a different path. Need to determine if non-Setapp installs still use iCloud Drive, and whether we want to support both.

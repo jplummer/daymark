@@ -26,10 +26,11 @@ These features define the app. Ship nothing without them.
 
 ### Sync strategy: piggyback on iCloud Drive
 
-NotePlan stores notes as plain markdown files in an iCloud Drive container:
-`~/Library/Mobile Documents/iCloud~co~noteplan~NotePlan3/Documents/`
+NotePlan stores notes as plain-text files (`.txt`, not `.md`). The storage location depends on the install:
+- **Setapp version:** `~/Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp/`
+- **App Store / direct version:** `~/Library/Mobile Documents/iCloud~co~noteplan~NotePlan3/Documents/` (iCloud Drive container)
 
-Even though NotePlan describes its sync as "CloudKit," the files live on disk in iCloud Drive and are synced at the filesystem level by macOS. Any process that reads/writes files in that directory gets cross-machine sync for free.
+The Setapp version uses CloudKit sync internally rather than iCloud Drive file-level sync. Both versions use the same file format and directory structure.
 
 **Plan:** Read/write NotePlan's files directly. This gives us:
 - Cross-machine sync via iCloud Drive with zero additional work.

@@ -13,19 +13,54 @@ html, body {
 
 #toolbar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 16px;
+  gap: 12px;
+  padding: 6px 16px;
   background: #252526;
   border-bottom: 1px solid #333;
   font-size: 13px;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-app-region: drag;
+}
+
+#nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+#nav button {
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+#nav button:hover {
+  background: #3c3c3c;
+  border-color: #555;
+}
+
+#nav button:active {
+  background: #444;
+}
+
+#nav-prev, #nav-next {
+  font-size: 16px;
+  padding: 2px 6px;
+  font-weight: 600;
 }
 
 #filename {
   font-weight: 600;
   color: #ccc;
+  flex: 1;
 }
 
 #status {
@@ -34,7 +69,7 @@ html, body {
 }
 
 #editor {
-  height: calc(100% - 37px);
+  height: calc(100% - 39px);
   overflow: hidden;
 }
 
@@ -81,3 +116,38 @@ html, body {
 .cm-editor.cm-focused .cm-selectionBackground {
   background: #264f78 !important;
 }
+
+/* Live preview heading styles */
+.cm-live-preview-h1 { font-size: 1.6em; font-weight: 700; color: #e2e2e2; }
+.cm-live-preview-h2 { font-size: 1.35em; font-weight: 700; color: #ddd; }
+.cm-live-preview-h3 { font-size: 1.15em; font-weight: 600; color: #ccc; }
+.cm-live-preview-h4 { font-size: 1.05em; font-weight: 600; color: #bbb; }
+.cm-live-preview-h5 { font-size: 1.0em; font-weight: 600; color: #aaa; }
+.cm-live-preview-h6 { font-size: 0.95em; font-weight: 600; color: #999; }
+
+/* Live preview inline styles */
+.cm-live-preview-bold { font-weight: 700; }
+.cm-live-preview-italic { font-style: italic; }
+.cm-live-preview-strikethrough { text-decoration: line-through; color: #888; }
+.cm-live-preview-code {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  background: #2a2a2a;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.cm-live-preview-wikilink {
+  color: #569cd6;
+  cursor: pointer;
+}
+.cm-live-preview-wikilink:hover {
+  text-decoration: underline;
+}
+
+/* Live preview checkbox widgets */
+.cm-live-preview-checkbox {
+  font-size: 1.1em;
+  cursor: pointer;
+  margin-right: 2px;
+}
+.cm-live-preview-checkbox.checked { color: #6a9955; }
+.cm-live-preview-checkbox.cancelled { color: #888; }
