@@ -131,12 +131,15 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 - Implement task checkbox toggling in the editor (click or keyboard shortcut to cycle states).
 - Parse `>date` syntax and register scheduled items in the note index.
-- When opening a daily note, pull in tasks scheduled for that date from other notes.
+- When opening a daily note, pull in tasks scheduled for that date from other notes. Scheduled tasks appear at the top of the daily note.
 - Display scheduled items with a reference back to their source note.
-- Implement `>today` carry-forward: applying `>today` to an incomplete task in a past daily note reschedules it to today.
+- A task can only be scheduled to one date at a time. Scheduling to a new date replaces the previous `>date`.
+- The original task always stays in place in its source note (preserving context). It is never removed or moved — only marked as scheduled.
+- Implement `>today` carry-forward. Key difference from `>YYYY-MM-DD`: `>today` tasks roll forward automatically — if not done today, they surface on tomorrow's note, and so on. NotePlan uses a display-only reference panel for this (not written to the daily note file). We should do better: NotePlan's panel lets you drag tasks out, which removes them from the source and destroys context. **Design decision needed:** how do we render carry-forward tasks? Options include writing them into the file as synced lines, or a panel that doesn't allow destructive moves. Discuss before building.
 - Implement synced lines: scheduled tasks that appear in a daily/weekly note are live references to their source. Edits in either location propagate to the other.
+- Stale tasks (scheduled date passed, still incomplete) are surfaced via the compact calendar's open-item highlighting — the calendar is the nudge to clean up the past.
 
-**Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears in the Feb 25 daily note. You can carry a stale task forward with `>today`. Editing a synced line in the daily note updates the source, and vice versa.
+**Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears at the top of the Feb 25 daily note. You can carry a stale task forward with `>today`. Editing a synced line in the daily note updates the source, and vice versa.
 
 ### Phase 6: Search and mention management
 
@@ -163,12 +166,52 @@ Observed during Phase 1 (Setapp version):
 - **Daily notes:** `Calendar/YYYYMMDD.txt` — flat directory, no year/month subfolders.
 - **Project notes:** `Notes/` directory with subdirectories (e.g. `Notes/Personal/`, `Notes/Invoca/`).
 - **Special folders:** `Notes/@Archive`, `Notes/@Templates`, `Notes/@Trash`.
-- **Task states observed so far:** `- [ ]` (open), `- [x]` (done), `- [-]` (cancelled). More states likely exist — catalog as we encounter them.
+- **Task states observed so far:**
+  - `- task text` — open task (no brackets on disk; NotePlan renders it with a checkbox).
+  - `- [x] task text` — done.
+  - `- [-] task text` — cancelled.
+  - `- [>] task text >YYYY-MM-DD` — scheduled to a specific date.
+  - Brackets only appear for non-open states. A plain `- ` line is an open task. More states may exist — catalog as encountered.
+
+### Scheduling syntax (observed from real notes)
+
+Inspected existing NotePlan files to determine on-disk format:
+
+- **Source line (originating note):** `- [>] task text >YYYY-MM-DD` — checkbox state changes to `[>]`, target date appended with `>`.
+- **Destination line (target daily note):** `- [ ] task text <YYYY-MM-DD` — open task with `<` back-reference to the originating date.
+- **Subtasks:** The entire indented block is scheduled. Each line (parent + children) gets `[>]` and `>date` on source, `[ ]` and `<date` on destination.
+- **After completion (non-synced):** Destination becomes `[x]`, but source appears to stay `[>]` in the file. See synced lines section for synced behavior.
+- **Auto-task creation:** Typing `- ` (hyphen space) creates an open task. On disk this stays as `- ` (no brackets) — NotePlan renders the checkbox in the UI. `* ` (asterisk space) remains a plain markdown bullet, not a task.
+- **`>today` on disk:** Persists literally as `>today` — NOT resolved to a date. This is the key difference from `>YYYY-MM-DD`. Only `>today` tasks roll forward; `>YYYY-MM-DD` tasks are pinned to a specific date.
+- **`>today` carry-forward scope:** Only explicitly `>today`-tagged tasks carry forward. Tasks with a specific `>YYYY-MM-DD` whose date has passed do NOT auto-carry — they stay pinned to their target date and are surfaced as stale via the compact calendar.
+- **Convenience menu:** Typing `>` in NotePlan offers: `>today` (repeat until completed), `>YYYY-MM-DD` (today's date), `>YYYY-Wnn` (current week), `>YYYY-Qn` (current quarter). Weekly and quarterly scheduling exist — document format when ready to implement.
+
+### Synced lines (observed from real notes)
+
+- **Block ID format:** `^xxxxxx` — 6 alphanumeric characters appended to the end of a line. Displayed as a blue asterisk in NotePlan's UI.
+- **On-disk:** Every copy of a synced line has identical text and the same `^blockid`. The line is duplicated across files — no "primary" copy; all are equal peers.
+- **Completion propagation:** When a synced line is checked off, NotePlan updates ALL copies in ALL files to `[x]`. This is true sync, not display-time resolution.
+- **Line format with both scheduling and sync:** `- [x] task text ^blockid >YYYY-MM-DD`. Block ID comes before `>date`. When a line is both synced and scheduled, the destination copy retains `>date` (NOT `<date`). The `<date` back-reference appears only on non-synced scheduled copies.
+- **Distinction:** `<YYYY-MM-DD` = non-synced copy pushed by scheduling. `^blockid` = synced copy. A line can have a block ID and a schedule date, but if it has a block ID it won't have a `<date`.
+
+**Use cases observed:**
+1. Workaround for `>today` reference panel — copy a task as a synced line into the daily note so it can be reordered without destroying the source.
+2. Cross-referencing tasks across `@mention` notes — sync a "talk to @person" task from one 1:1 note into another.
+3. Occasionally syncing reference text (not just tasks) across project notes.
+
+**Design opportunity:** Use cases 1 and 2 are gymnastics — workarounds for missing features. Better `>today` handling and better @mention surfacing could reduce the need for manual synced-line management.
+
+**Open:** Block ID assignment — unclear whether NotePlan assigns a `^blockid` when the line is first created or only when a synced copy is made. Experiment: give two lines a made-up `^blockid` in different files and see if NotePlan treats them as linked.
+
+**Open:** Non-task synced lines — confirmed that synced lines work on any line (not just tasks). Same `^blockid` mechanism, same blue asterisk in UI.
 
 ## Open Questions
 
 - **Weekly notes:** Where are they stored? Filename pattern? Need to inspect.
-- **Task state syntax:** Full set of states beyond `[ ]`, `[x]`, `[-]` — need to catalog.
+- **Task state syntax:** Open tasks are usually just `- text` (no brackets), but `- [ ] text` also exists in some older notes. Both forms must be treated as open tasks. Brackets appear consistently for done `[x]`, cancelled `[-]`, and scheduled `[>]`. More states may exist.
 - **Template format:** How does NotePlan store and apply templates? Inspect `Notes/@Templates/`.
-- **Scheduling syntax:** How exactly does `>date` and `>today` appear in files? Need examples from real notes.
+- **Scheduling compatibility:** We must match NotePlan's on-disk format for scheduled tasks so both apps can coexist. NotePlan docs describe intended behavior; real notes reveal actual behavior. When they diverge, match what's in the files.
+- **Scheduling: completion model (resolved)** — For non-synced `>YYYY-MM-DD` tasks, the source stays `[>]` ("delegated") regardless of destination state. Completion status lives only on the `<date` destination copy. The source doesn't need to know if the task was done — `[>]` means "sent elsewhere." The compact calendar only needs to check the target date for open items, not trace back to every source. (Some older notes have `[x]` + `>date` — likely tasks completed early on the source before the scheduled date; the `>date` is an inert artifact.)
+- **Calendar grid vs. `>today`:** Tasks scheduled with `>today` should only show as open on today's date and the originating date in the compact calendar — NOT on every intervening day. Document this constraint when implementing the calendar.
+- **@mention task sync:** There may be value in helping sync or surface tasks across `@mentions` (e.g. see all open tasks tagged with `@PersonName`). Discuss later.
 - **iCloud Drive vs Setapp container:** The FEATURES.md sync strategy mentions iCloud Drive, but the Setapp version uses a different path. Need to determine if non-Setapp installs still use iCloud Drive, and whether we want to support both.

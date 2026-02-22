@@ -6,8 +6,16 @@
     - syntax highlighting options
     - colors and styling
     - location of notes
-    - sync stuff
+    - sync settings
 - simple note + calendar icon for daymark
 - not have an icon in the dock for every window
 - context menu and command-click to open a link in a new window
 - make it clear what's an internal and external link – markdown link for external, double bracket for internal
+- **Scheduling convenience shortcuts** — `>tomorrow`, `>Friday`, `>+1d`, `>+3d`, `>+1w`, `>+1m` etc., auto-converted to a concrete `>YYYY-MM-DD` on entry. Lower priority than getting `>today` and `>YYYY-MM-DD` right.
+- **Schedule to weekly notes** — NotePlan syntax is `>YYYY-Wnn` (e.g. `>2026-W08`). Useful for "I won't get to this today, put it on next week's plan."
+- **Schedule to quarterly notes** — NotePlan syntax is `>YYYY-Qn` (e.g. `>2026-Q1`). Lower priority.
+- **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better.
+- **Task iconography** — NotePlan's task icons (circle, circle+check, circle+arrow, circle+x) work on their own but fight with the markdown syntax, especially done `[x]` vs cancelled `[-]` (the icon for cancelled has an "x" while the markdown uses `-`). Design better icons that reinforce rather than contradict the underlying syntax.
+- **Proportional fonts for body text** — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
+- **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support.
+- **NotePlan theme reference** — Favorite theme is "JP Dieter Rams New York" at `~/Library/Containers/co.noteplan.NotePlan-setapp/.../Themes/JP Dieter Rams New York.json`. Key style choices: gold headings (#736B1E) in New York Semibold, red open tasks (#ED3F1C), faded syntax markers (#35000000), subtle tag/mention backgrounds (#20d87001), highlighted text (yellow bg), code in SF Mono with light gray bg. Also shows NotePlan's full style vocabulary (flagged states, working-on, schedule links, etc.) which hints at features we'll encounter.
