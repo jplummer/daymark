@@ -125,14 +125,16 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 ### Phase 5: Tasks and scheduling
 
-**Goal:** Full task management — checkboxes, completion, and the `>date` scheduling syntax.
+**Goal:** Full task management — checkboxes, completion, the `>date` scheduling syntax, carry-forward with `>today`, and synced lines.
 
 - Implement task checkbox toggling in the editor (click or keyboard shortcut to cycle states).
 - Parse `>date` syntax and register scheduled items in the note index.
 - When opening a daily note, pull in tasks scheduled for that date from other notes.
 - Display scheduled items with a reference back to their source note.
+- Implement `>today` carry-forward: applying `>today` to an incomplete task in a past daily note reschedules it to today.
+- Implement synced lines: scheduled tasks that appear in a daily/weekly note are live references to their source. Edits in either location propagate to the other.
 
-**Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears in the Feb 25 daily note.
+**Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears in the Feb 25 daily note. You can carry a stale task forward with `>today`. Editing a synced line in the daily note updates the source, and vice versa.
 
 ### Phase 6: Search and mention management
 

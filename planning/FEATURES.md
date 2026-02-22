@@ -11,7 +11,8 @@ These features define the app. Ship nothing without them.
 - **Daily & Weekly notes** — Weekly items that aren't completed appear at top of daily note.
 - **Project notes** — Long-lived notes (not tied to a date) with tasks, links, etc.
 - **Tasks** — Inline tasks in any note; checkboxes, completion state.
-- **Scheduling** — `>date` syntax to push a task from a project note onto a specific day's Daily Note.
+- **Scheduling** — `>date` syntax to push a task from a project note onto a specific day's Daily Note. `>today` carries an incomplete task forward to today's note (the primary "reschedule" gesture).
+- **Synced lines** — Tasks scheduled into a daily/weekly note via `>date` appear as synced references. Edits to a synced line propagate back to the source note (and vice versa), so the task doesn't diverge across locations.
 - **Links & backlinks** — `[[wiki-links]]` that resolve by title; backlink panel showing inbound references.
 - **Stable links on move** — Moving a note into a folder must not break links to/from it.
 - **@mentions and #hashtags** — Clickable, searchable; function as lightweight taxonomy.
