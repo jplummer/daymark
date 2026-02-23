@@ -17,7 +17,7 @@
   --text-secondary: #666666;
   --text-muted: #999999;
   --accent: #007acc;
-  --selection: #add6ff;
+  --selection: #80c4ff;
   --cursor: #333333;
   --link: #0066cc;
   --green: #4a8c3f;
@@ -39,7 +39,7 @@
     --text-secondary: #aaaaaa;
     --text-muted: #666666;
     --accent: #007acc;
-    --selection: #264f78;
+    --selection: #2a5f9e;
     --cursor: #d4d4d4;
     --link: #569cd6;
     --green: #6a9955;
@@ -368,12 +368,8 @@ html, body {
   border-left-color: var(--cursor);
 }
 
-.cm-editor .cm-selectionBackground {
-  background: var(--selection) !important;
-}
-
-.cm-editor.cm-focused .cm-selectionBackground {
-  background: var(--selection) !important;
+.cm-editor .cm-content ::selection {
+  background: var(--selection);
 }
 
 /* ── Live preview heading styles ── */
@@ -402,6 +398,21 @@ html, body {
 }
 .cm-live-preview-wikilink:hover {
   text-decoration: underline;
+}
+
+/* ── Live preview external link styles ── */
+
+.cm-live-preview-extlink {
+  color: var(--link);
+  cursor: pointer;
+}
+.cm-live-preview-extlink:hover {
+  text-decoration: underline;
+}
+.cm-live-preview-extlink-arrow {
+  color: var(--link);
+  cursor: pointer;
+  font-size: 0.85em;
 }
 
 /* ── Live preview checkbox widgets ── */

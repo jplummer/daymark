@@ -1,5 +1,5 @@
 import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, highlightActiveLine, drawSelection, KeyBinding } from '@codemirror/view';
+import { EditorView, keymap, highlightActiveLine, KeyBinding } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
@@ -10,6 +10,8 @@ import {
   bracketMatching,
 } from '@codemirror/language';
 import { readTextFile, writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { livePreview } from './live-preview';
 import { initSidebar, setActiveTreeItem, TreeNode } from './sidebar';
 import 'remixicon/fonts/remixicon.css';
@@ -237,11 +239,101 @@ const navKeymap: KeyBinding[] = [
   { key: 'Mod-]', run: () => goForward() },
 ];
 
+// --- External link click handler ---
+
+function findLinkHref(el: HTMLElement | null): string | null {
+  while (el && el.classList) {
+    if (el.dataset.href) return el.dataset.href;
+    if (el.classList.contains('cm-line')) return null;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+const linkClickHandler = EditorView.domEventHandlers({
+  // Must be mousedown, not click — CM6 moves the cursor on mousedown,
+  // which rebuilds decorations and removes the link span before click fires.
+  mousedown(event: MouseEvent, _view: EditorView) {
+    if (event.button !== 0) return false;
+    const target = event.target as HTMLElement;
+    if (!target) return false;
+
+    const isLink = target.closest('.cm-live-preview-extlink, .cm-live-preview-extlink-arrow');
+    if (!isLink) return false;
+
+    const href = findLinkHref(isLink as HTMLElement);
+    if (href) {
+      event.preventDefault();
+      openUrl(href).catch((err) => console.error('[daymark] Failed to open URL:', err));
+      return true;
+    }
+    return false;
+  },
+});
+
+// --- Paste URL → auto-fetch title ---
+
+const URL_RE = /^https?:\/\/\S+$/;
+
+async function fetchPageTitle(url: string): Promise<string> {
+  try {
+    const resp = await tauriFetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'text/html' },
+    });
+    // Read only enough to find <title> — limit to first 10 KB
+    const html = (await resp.text()).slice(0, 10_000);
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (titleMatch) return titleMatch[1].trim();
+  } catch (err) {
+    console.warn('[daymark] Title fetch failed:', url, err);
+  }
+  // Fallback: use the domain name
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return 'Link';
+  }
+}
+
+const pasteUrlHandler = EditorView.domEventHandlers({
+  paste(event: ClipboardEvent, editorView: EditorView) {
+    const text = event.clipboardData?.getData('text/plain')?.trim();
+    if (!text || !URL_RE.test(text)) return false;
+
+    event.preventDefault();
+
+    const placeholder = 'Fetching title…';
+    const from = editorView.state.selection.main.head;
+    const insertion = `[${placeholder}](${text})`;
+
+    editorView.dispatch({
+      changes: { from, insert: insertion },
+      selection: { anchor: from + insertion.length },
+    });
+
+    // Async: replace placeholder with actual title
+    const titleFrom = from + 1; // after [
+    const titleTo = titleFrom + placeholder.length;
+
+    fetchPageTitle(text).then((title) => {
+      // Verify the placeholder is still there (user might have edited)
+      const currentText = editorView.state.sliceDoc(titleFrom, titleTo);
+      if (currentText !== placeholder) return;
+
+      editorView.dispatch({
+        changes: { from: titleFrom, to: titleTo, insert: title },
+      });
+    });
+
+    return true;
+  },
+});
+
 // --- Editor extensions ---
 
 const editorExtensions = [
   highlightActiveLine(),
-  drawSelection(),
   indentOnInput(),
   bracketMatching(),
   history(),
@@ -256,6 +348,8 @@ const editorExtensions = [
   }),
   EditorView.lineWrapping,
   livePreview,
+  linkClickHandler,
+  pasteUrlHandler,
 ];
 
 // --- Navigation ---

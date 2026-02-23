@@ -7,7 +7,7 @@
  * markdown and can edit it naturally.
  *
  * Currently handles: headings, bold, italic, wiki-links, inline code,
- * strikethrough, and task checkboxes.
+ * strikethrough, task checkboxes, and external links.
  *
  * Styling is hard-coded for now. The decoration styles live in
  * styles.css under .cm-live-preview-* classes, and can be made
@@ -57,6 +57,24 @@ class CheckboxWidget extends WidgetType {
 
   eq(other: CheckboxWidget) {
     return this.checked === other.checked && this.cancelled === other.cancelled;
+  }
+}
+
+class LinkArrowWidget extends WidgetType {
+  constructor(readonly href: string) {
+    super();
+  }
+
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-live-preview-extlink-arrow';
+    span.textContent = ' ↗';
+    span.dataset.href = this.href;
+    return span;
+  }
+
+  eq(other: LinkArrowWidget) {
+    return this.href === other.href;
   }
 }
 
@@ -143,6 +161,38 @@ function buildDecorations(state: EditorState, cursorLine: number): DecorationSet
       decorations.push(hidden.range(start + match[0].length - 2, start + match[0].length));
     }
 
+    // External links: [text](url) and bare URLs
+    // Combined regex so bare URLs inside markdown links aren't double-matched
+    for (const match of text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/\S+)/g)) {
+      const start = line.from + match.index!;
+
+      if (match[1] && match[2]) {
+        // Markdown link: [text](url)
+        const linkText = match[1];
+        const url = match[2];
+        decorations.push(hidden.range(start, start + 1));
+        decorations.push(Decoration.mark({
+          class: 'cm-live-preview-extlink',
+          attributes: { 'data-href': url },
+        }).range(start + 1, start + 1 + linkText.length));
+        decorations.push(hidden.range(
+          start + 1 + linkText.length,
+          start + match[0].length
+        ));
+        decorations.push(Decoration.widget({
+          widget: new LinkArrowWidget(url),
+          side: 1,
+        }).range(start + 1 + linkText.length));
+      } else if (match[3]) {
+        // Bare URL
+        const url = match[3];
+        decorations.push(Decoration.mark({
+          class: 'cm-live-preview-extlink',
+          attributes: { 'data-href': url },
+        }).range(start, start + url.length));
+      }
+    }
+
     // Task checkboxes: - [ ], - [x], - [-]
     const taskMatch = text.match(/^(\s*- )\[([ x\-])\]/);
     if (taskMatch) {
@@ -163,16 +213,19 @@ function buildDecorations(state: EditorState, cursorLine: number): DecorationSet
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    cursorLine: number;
 
     constructor(view: EditorView) {
-      const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
-      this.decorations = buildDecorations(view.state, cursorLine);
+      this.cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
+      this.decorations = buildDecorations(view.state, this.cursorLine);
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.selectionSet || update.viewportChanged) {
-        const cursorLine = update.state.doc.lineAt(update.state.selection.main.head).number;
-        this.decorations = buildDecorations(update.state, cursorLine);
+      const newCursorLine = update.state.doc.lineAt(update.state.selection.main.head).number;
+
+      if (update.docChanged || update.viewportChanged || newCursorLine !== this.cursorLine) {
+        this.cursorLine = newCursorLine;
+        this.decorations = buildDecorations(update.state, this.cursorLine);
       }
     }
   },

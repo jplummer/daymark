@@ -20,6 +20,7 @@
     "@lezer/highlight": "^1.2.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-fs": "^2.4.5",
+    "@tauri-apps/plugin-http": "^2.5.7",
     "@tauri-apps/plugin-opener": "^2",
     "remixicon": "^4.9.1"
   },
