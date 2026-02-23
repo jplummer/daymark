@@ -6,7 +6,7 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 ### Editor & Rendering
 
-- ⚠️ **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support.
+- ⚠️ **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support. (`syntaxTree` is already imported in `live-preview.ts` but unused — kept for this transition.)
 - **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better.
 - **Make it clear what's an internal and external link** — markdown link for external, double bracket for internal. Visual distinction in the editor.
 - **Proportional fonts for body text** — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.

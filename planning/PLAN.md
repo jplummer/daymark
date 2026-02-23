@@ -230,6 +230,7 @@ Inspected existing NotePlan files to determine on-disk format:
 - **Calendar grid vs. `>today`:** Tasks scheduled with `>today` should only show as open on today's date and the originating date in the compact calendar — NOT on every intervening day. Document this constraint when implementing the calendar.
 - **@mention task sync:** There may be value in helping sync or surface tasks across `@mentions` (e.g. see all open tasks tagged with `@PersonName`). Discuss later.
 - **iCloud Drive vs Setapp container:** The FEATURES.md sync strategy mentions iCloud Drive, but the Setapp version uses a different path. Need to determine if non-Setapp installs still use iCloud Drive, and whether we want to support both.
+- **Native file watching not working:** Tauri v2's `watch()` from `@tauri-apps/plugin-fs` didn't fire events for files in the NotePlan Setapp container (`~/Library/Containers/co.noteplan.NotePlan-setapp/...`). Tried both `baseDir: Home` with relative paths and absolute paths via `homeDir()`. No errors thrown, just no events. Currently using polling (readTextFile every 2s, readDir every 5s) as a reliable fallback. Root cause unknown — could be macOS sandbox restrictions on FSEvents for other apps' containers, path resolution issues, or a Tauri plugin bug. Worth revisiting if polling becomes a performance concern.
 
 ---
 
