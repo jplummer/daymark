@@ -108,6 +108,9 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 - Scan the notes directory on startup to build the in-memory index (title → path, outgoing links, mentions, tags).
 - Parse `[[wiki-links]]` in CM6 and make them navigable (click to open the linked note).
+- Wiki-link autocomplete: typing `[[` and typing a few characters shows a ranked list of matching notes. Exact matches among active notes first, then active notes that match less well, then archived notes that match. Never show trashed notes in autocomplete (trashed notes should be searchable separately).
+- Link resolution: title-based (filename minus `.txt`). Note title can diverge from filename if the H1 is changed — see conventions below.
+- Clicking a link to a non-existent note creates a new note in the `Notes/` root.
 - Build the backlinks panel (given a note, show all notes that link to it).
 - Make `@mentions` and `#hashtags` clickable (navigate to search results).
 - Incrementally update the index when files change.
@@ -118,12 +121,14 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Goal:** The daily-driver workflow — open today's note, see the compact calendar, get uncompleted weekly items surfaced.
 
+- Calendar notes (daily and weekly) are auto-created when first navigated to or when something is scheduled into them. A note for a given date may never exist if it's never visited or targeted.
 - Implement daily note creation (from template if one exists, otherwise blank) tied to today's date.
-- Implement weekly note creation with the same approach.
+- Implement weekly note creation with the same approach. Weekly notes live in `Calendar/YYYY-Wnn.txt`.
 - Build the compact calendar widget — shows the current month, highlights dates that have notes with open tasks.
-- Surface uncompleted items from the weekly note at the top of the daily note.
+- Surface open tasks from the weekly note in a reference panel at the top of all daily notes in that week. (NotePlan does this; it's useful but could be improved later.)
+- Weekly note workflow: written at start of week, reviewing prior week's missed items. Tasks that belong to the week but not a specific day go here. Re-reviewed mid-week or Friday.
 
-**Done when:** Launching Daymark opens today's daily note with weekly rollover items, and the calendar lets you navigate to any day.
+**Done when:** Launching Daymark opens today's daily note with weekly items surfaced, and the calendar lets you navigate to any day.
 
 ### Phase 5: Tasks and scheduling
 
@@ -166,6 +171,16 @@ Observed during Phase 1 (Setapp version):
 - **Daily notes:** `Calendar/YYYYMMDD.txt` — flat directory, no year/month subfolders.
 - **Project notes:** `Notes/` directory with subdirectories (e.g. `Notes/Personal/`, `Notes/Invoca/`).
 - **Special folders:** `Notes/@Archive`, `Notes/@Templates`, `Notes/@Trash`.
+- **Wiki-links:** `[[Note Title]]` — title-only, no folder paths, no aliases (`|`), no section anchors (`#`). Resolve by matching the note filename (minus `.txt`).
+- **Title vs filename:** NotePlan uses the H1 (or link text on creation) as the initial filename. If the H1 is later changed, NotePlan offers to update all links. The on-disk filename is NOT updated. This means the filename and the H1/link-text can diverge. We must resolve links by filename for compatibility, but be aware of the divergence.
+- **Duplicate titles:** 208 duplicate filenames exist, almost all in `@Archive` and `@Trash`. Active notes should always win over archived/trashed when resolving links.
+- **Note creation from links:** Clicking a link to a non-existent note creates a new file in the `Notes/` root. Moving a note to a subfolder does not break links to it (NotePlan resolves by title across all folders).
+- **@mentions format:** `@FirstnameLastname` (no space, camelCase). Some have an `@_old/` prefix (e.g. `@_old/NancyJohnson`) — this is a manual workaround for archiving mentions of people who are no longer relevant, because NotePlan's "delete mention" destroys all references.
+- **@mention usage pattern:** Tasks like `- Ask @PersonName about X` are written in meeting/project notes. To prep for a 1:1, the user searches for that person's @mentions to find all outstanding tasks involving them. Current NotePlan workflow for this is very cumbersome (search → follow result → copy synced line → paste into person's note → repeat).
+- **#hashtags:** Rarely used — only 2 found across all 2025-2026 daily notes. Not a significant part of the current workflow. Support for compatibility but don't prioritize.
+- **Priority markers:** `!`, `!!`, `!!!` etc. before task text (e.g. `- ! important task`). NotePlan renders these with increasing visual weight. We should highlight the line with increasing saturation as bangs pile up.
+- **@mention autocomplete:** Typing `@` should offer a ranked list of known mentions, best matches first (same pattern as `[[` autocomplete for wiki-links).
+- **#hashtags:** Support for compatibility. Parsing is tricky — hashtags can collide with hex colors, Slack channel names, markdown headings, URL fragments. Need careful tokenization.
 - **Task states observed so far:**
   - `- task text` — open task (no brackets on disk; NotePlan renders it with a checkbox).
   - `- [x] task text` — done.
@@ -201,13 +216,13 @@ Inspected existing NotePlan files to determine on-disk format:
 
 **Design opportunity:** Use cases 1 and 2 are gymnastics — workarounds for missing features. Better `>today` handling and better @mention surfacing could reduce the need for manual synced-line management.
 
-**Open:** Block ID assignment — unclear whether NotePlan assigns a `^blockid` when the line is first created or only when a synced copy is made. Experiment: give two lines a made-up `^blockid` in different files and see if NotePlan treats them as linked.
+**Resolved:** Block ID assignment — tested by adding a made-up `^test01` to lines in two different daily notes. NotePlan recognized them as synced immediately. Block IDs are purely file-based: NotePlan discovers matching `^blockid` strings by scanning files, no internal database registration needed. We can generate our own block IDs and NotePlan will honor them.
 
 **Open:** Non-task synced lines — confirmed that synced lines work on any line (not just tasks). Same `^blockid` mechanism, same blue asterisk in UI.
 
 ## Open Questions
 
-- **Weekly notes:** Where are they stored? Filename pattern? Need to inspect.
+- **Weekly notes (resolved):** Stored in `Calendar/` alongside daily notes. Filename: `YYYY-Wnn.txt` (e.g. `2026-W07.txt`). 144 weekly notes exist (2022–2026). Content is a week plan: tasks for the week not assigned to a specific day. Support `<YYYY-Wnn` back-references (same scheduling mechanism as daily notes). Open tasks from the weekly note are shown in a reference panel at the top of all daily notes in that week.
 - **Task state syntax:** Open tasks are usually just `- text` (no brackets), but `- [ ] text` also exists in some older notes. Both forms must be treated as open tasks. Brackets appear consistently for done `[x]`, cancelled `[-]`, and scheduled `[>]`. More states may exist.
 - **Template format:** How does NotePlan store and apply templates? Inspect `Notes/@Templates/`.
 - **Scheduling compatibility:** We must match NotePlan's on-disk format for scheduled tasks so both apps can coexist. NotePlan docs describe intended behavior; real notes reveal actual behavior. When they diverge, match what's in the files.

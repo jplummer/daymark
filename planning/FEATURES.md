@@ -19,8 +19,10 @@ These features define the app. Ship nothing without them.
 - **Auto-task creation** — Typing `- ` (hyphen space) at the start of a line automatically converts to `- [ ] ` (open task). `* ` (asterisk space) remains a plain markdown bullet.
 - **Links & backlinks** — `[[wiki-links]]` that resolve by title; backlink panel showing inbound references.
 - **Stable links on move** — Moving a note into a folder must not break links to/from it.
-- **@mentions and #hashtags** — Clickable, searchable; function as lightweight taxonomy.
-- **Mention renaming / consolidation** — Rename an @mention globally, updating every document that contains it.
+- **@mentions** — `@FirstnameLastname` tags in any note. Clickable (navigates to search results or reference pane). Primary use: tagging tasks with the person they involve, e.g. `- Ask @AngelicaBunyi about X`. Finding all open tasks mentioning a person is a core daily-driver workflow for meeting prep.
+- **#hashtags** — Clickable, searchable; function as lightweight taxonomy. Support for compatibility but not heavily used. Parsing must avoid false positives (hex colors, Slack channels, URL fragments).
+- **Priority markers (`!`, `!!`, `!!!`)** — Exclamation marks before task text indicate priority. Render with increasing visual saturation as bangs stack up.
+- **Mention renaming / consolidation** — Rename an @mention globally, updating every document that contains it. Useful for fixing inconsistencies (@Nash → @NashCooper), typos, or name changes. Deleting a mention must NOT destroy the text — it should degrade to plain text (e.g. `@AlexMann` → `AlexMann`) or move to an `@_old/` namespace. NotePlan's current behavior (deleting all references) is destructive.
 - **Note templates with logic** — Create notes from templates; templates support conditional/dynamic content.
 - **Custom markdown formatting** — Custom syntax highlighting for extended markdown elements (e.g. task states, dates, tags).
 - **Compact calendar** — Calendar widget highlighting past/future dates that have open items.
