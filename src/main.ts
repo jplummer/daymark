@@ -254,7 +254,7 @@ const linkClickHandler = EditorView.domEventHandlers({
   // Must be mousedown, not click — CM6 moves the cursor on mousedown,
   // which rebuilds decorations and removes the link span before click fires.
   mousedown(event: MouseEvent, _view: EditorView) {
-    if (event.button !== 0) return false;
+    if (event.button !== 0 || event.ctrlKey) return false;
     const target = event.target as HTMLElement;
     if (!target) return false;
 

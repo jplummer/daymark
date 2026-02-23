@@ -2,9 +2,10 @@
  * Live preview extension for CodeMirror 6.
  *
  * Hides markdown syntax characters (e.g. **, ##, [[, ]]) via replace
- * decorations on all lines except the one the cursor is on. When the
- * cursor moves to a line, decorations are removed so you see the raw
- * markdown and can edit it naturally.
+ * decorations. All syntax is inline-scoped: decorations are only removed
+ * for the specific syntax span the cursor is within, so moving around a
+ * line doesn't disrupt unrelated formatted elements. Heading font sizes
+ * are always applied; only the # prefix is inline-scoped.
  *
  * Currently handles: headings, bold, italic, wiki-links, inline code,
  * strikethrough, task checkboxes, and external links.
@@ -35,28 +36,30 @@ class HiddenWidget extends WidgetType {
   }
 }
 
-class CheckboxWidget extends WidgetType {
-  constructor(private checked: boolean, private cancelled: boolean) {
+type TaskState = 'open' | 'done' | 'cancelled' | 'scheduled';
+
+const taskIcons: Record<TaskState, { icon: string; cls: string }> = {
+  open:      { icon: 'ri-circle-line',               cls: 'open' },
+  done:      { icon: 'ri-checkbox-circle-line',       cls: 'done' },
+  cancelled: { icon: 'ri-indeterminate-circle-line',  cls: 'cancelled' },
+  scheduled: { icon: 'ri-arrow-right-circle-line',    cls: 'scheduled' },
+};
+
+class TaskWidget extends WidgetType {
+  constructor(readonly taskState: TaskState) {
     super();
   }
 
   toDOM() {
     const span = document.createElement('span');
-    span.className = 'cm-live-preview-checkbox';
-    if (this.cancelled) {
-      span.textContent = '⊘';
-      span.classList.add('cancelled');
-    } else if (this.checked) {
-      span.textContent = '☑';
-      span.classList.add('checked');
-    } else {
-      span.textContent = '☐';
-    }
+    const { icon, cls } = taskIcons[this.taskState];
+    span.className = `cm-live-preview-task ${cls}`;
+    span.innerHTML = `<i class="${icon}"></i> `;
     return span;
   }
 
-  eq(other: CheckboxWidget) {
-    return this.checked === other.checked && this.cancelled === other.cancelled;
+  eq(other: TaskWidget) {
+    return this.taskState === other.taskState;
   }
 }
 
@@ -80,94 +83,116 @@ class LinkArrowWidget extends WidgetType {
 
 const hidden = Decoration.replace({ widget: new HiddenWidget() });
 
-// --- Heading styles applied as line decorations ---
+// --- Line decorations ---
 
 const headingLineDecos: Record<number, Decoration> = {};
 for (let level = 1; level <= 6; level++) {
   headingLineDecos[level] = Decoration.line({ class: `cm-live-preview-h${level}` });
 }
 
-// --- Build decorations for a given state ---
+const doneTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-done-line' });
 
-function buildDecorations(state: EditorState, cursorLine: number): DecorationSet {
+// --- Build decorations for a given state ---
+//
+// Heading font size always applied; `#` prefix inline-scoped like everything
+// else. Raw markers shown only when cursor is within the match range.
+
+function buildDecorations(state: EditorState, cursorPos: number): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
+  const cursorLine = doc.lineAt(cursorPos).number;
 
-  // Walk each line to find syntax we want to decorate
+  // True when cursor is inside [from, to] (inclusive of boundaries)
+  const cursorIn = (from: number, to: number) =>
+    cursorPos >= from && cursorPos <= to;
+
   for (let i = 1; i <= doc.lines; i++) {
-    if (i === cursorLine) continue;
-
     const line = doc.line(i);
     const text = line.text;
+    const onCursorLine = (i === cursorLine);
 
-    // Headings: hide the # characters and trailing space
+    // Headings: font size always applied; # prefix inline-scoped
     const headingMatch = text.match(/^(#{1,6})\s/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       decorations.push(headingLineDecos[level].range(line.from));
-      decorations.push(hidden.range(line.from, line.from + headingMatch[0].length));
+      const hashEnd = line.from + headingMatch[0].length;
+      if (!(onCursorLine && cursorIn(line.from, hashEnd))) {
+        decorations.push(hidden.range(line.from, hashEnd));
+      }
     }
 
-    // Inline patterns — scan the line for syntax markers
+    // Inline patterns — all inline-scoped from here down
+
     // Bold: **text** or __text__
     for (const match of text.matchAll(/(\*\*|__)(.+?)\1/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
       const markerLen = match[1].length;
       decorations.push(hidden.range(start, start + markerLen));
       decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
         start + markerLen, start + markerLen + match[2].length
       ));
-      decorations.push(hidden.range(start + match[0].length - markerLen, start + match[0].length));
+      decorations.push(hidden.range(end - markerLen, end));
     }
 
     // Italic: *text* or _text_ (but not ** or __)
     for (const match of text.matchAll(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
       const content = match[1] || match[2];
       decorations.push(hidden.range(start, start + 1));
       decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
         start + 1, start + 1 + content.length
       ));
-      decorations.push(hidden.range(start + match[0].length - 1, start + match[0].length));
+      decorations.push(hidden.range(end - 1, end));
     }
 
     // Strikethrough: ~~text~~
     for (const match of text.matchAll(/~~(.+?)~~/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
       decorations.push(hidden.range(start, start + 2));
       decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
         start + 2, start + 2 + match[1].length
       ));
-      decorations.push(hidden.range(start + match[0].length - 2, start + match[0].length));
+      decorations.push(hidden.range(end - 2, end));
     }
 
     // Inline code: `text`
     for (const match of text.matchAll(/(?<!`)(`)((?!`).+?)(`)/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
       decorations.push(hidden.range(start, start + 1));
       decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
         start + 1, start + 1 + match[2].length
       ));
-      decorations.push(hidden.range(start + match[0].length - 1, start + match[0].length));
+      decorations.push(hidden.range(end - 1, end));
     }
 
     // Wiki-links: [[text]]
     for (const match of text.matchAll(/\[\[(.+?)\]\]/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
       decorations.push(hidden.range(start, start + 2));
       decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
         start + 2, start + 2 + match[1].length
       ));
-      decorations.push(hidden.range(start + match[0].length - 2, start + match[0].length));
+      decorations.push(hidden.range(end - 2, end));
     }
 
     // External links: [text](url) and bare URLs
-    // Combined regex so bare URLs inside markdown links aren't double-matched
     for (const match of text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/\S+)/g)) {
       const start = line.from + match.index!;
+      const end = start + match[0].length;
+      if (onCursorLine && cursorIn(start, end)) continue;
 
       if (match[1] && match[2]) {
-        // Markdown link: [text](url)
         const linkText = match[1];
         const url = match[2];
         decorations.push(hidden.range(start, start + 1));
@@ -176,15 +201,13 @@ function buildDecorations(state: EditorState, cursorLine: number): DecorationSet
           attributes: { 'data-href': url },
         }).range(start + 1, start + 1 + linkText.length));
         decorations.push(hidden.range(
-          start + 1 + linkText.length,
-          start + match[0].length
+          start + 1 + linkText.length, end
         ));
         decorations.push(Decoration.widget({
           widget: new LinkArrowWidget(url),
           side: 1,
         }).range(start + 1 + linkText.length));
       } else if (match[3]) {
-        // Bare URL
         const url = match[3];
         decorations.push(Decoration.mark({
           class: 'cm-live-preview-extlink',
@@ -193,13 +216,37 @@ function buildDecorations(state: EditorState, cursorLine: number): DecorationSet
       }
     }
 
-    // Task checkboxes: - [ ], - [x], - [-]
-    const taskMatch = text.match(/^(\s*- )\[([ x\-])\]/);
+    // Tasks: `- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `
+    // Replace the entire task prefix (indent + marker) with an icon widget
+    const taskMatch = text.match(/^(\s*)(- \[([x\->  ])\] |(\*) |(-) )/);
     if (taskMatch) {
-      const checkStart = line.from + taskMatch[1].length;
-      const marker = taskMatch[2];
-      const widget = new CheckboxWidget(marker === 'x', marker === '-');
-      decorations.push(Decoration.replace({ widget }).range(checkStart, checkStart + 3));
+      const indent = taskMatch[1].length;
+      const prefix = taskMatch[2];
+      const prefixStart = line.from + indent;
+      const prefixEnd = prefixStart + prefix.length;
+
+      let taskState: TaskState | null = null;
+      if (taskMatch[3] !== undefined) {
+        const marker = taskMatch[3];
+        if (marker === 'x') taskState = 'done';
+        else if (marker === '-') taskState = 'cancelled';
+        else if (marker === '>') taskState = 'scheduled';
+        else taskState = 'open';
+      } else if (taskMatch[5]) {
+        taskState = 'open';
+      }
+      // `* ` (taskMatch[4]) is a plain bullet, not a task — skip
+
+      // Done tasks always get muted line styling
+      if (taskState === 'done') {
+        decorations.push(doneTaskLineDeco.range(line.from));
+      }
+
+      // Icon widget is inline-scoped
+      if (taskState && !(onCursorLine && cursorIn(prefixStart, prefixEnd))) {
+        const widget = new TaskWidget(taskState);
+        decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+      }
     }
   }
 
@@ -213,19 +260,25 @@ function buildDecorations(state: EditorState, cursorLine: number): DecorationSet
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
-    cursorLine: number;
+    cursorPos: number;
 
     constructor(view: EditorView) {
-      this.cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number;
-      this.decorations = buildDecorations(view.state, this.cursorLine);
+      this.cursorPos = view.state.selection.main.head;
+      this.decorations = buildDecorations(view.state, this.cursorPos);
     }
 
     update(update: ViewUpdate) {
-      const newCursorLine = update.state.doc.lineAt(update.state.selection.main.head).number;
+      const sel = update.state.selection.main;
+      const newPos = sel.head;
 
-      if (update.docChanged || update.viewportChanged || newCursorLine !== this.cursorLine) {
-        this.cursorLine = newCursorLine;
-        this.decorations = buildDecorations(update.state, this.cursorLine);
+      if (update.docChanged || update.viewportChanged) {
+        this.cursorPos = newPos;
+        this.decorations = buildDecorations(update.state, this.cursorPos);
+      } else if (sel.empty && newPos !== this.cursorPos) {
+        // Collapsed cursor moved — rebuild for inline-scoped decorations.
+        // Skip during drag-select (non-empty selection) to avoid breaking selection.
+        this.cursorPos = newPos;
+        this.decorations = buildDecorations(update.state, this.cursorPos);
       }
     }
   },

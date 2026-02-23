@@ -415,15 +415,21 @@ html, body {
   font-size: 0.85em;
 }
 
-/* ── Live preview checkbox widgets ── */
+/* ── Live preview task icon widgets ── */
 
-.cm-live-preview-checkbox {
-  font-size: 1.1em;
+.cm-live-preview-task {
   cursor: pointer;
-  margin-right: 2px;
 }
-.cm-live-preview-checkbox.checked { color: var(--green); }
-.cm-live-preview-checkbox.cancelled { color: var(--text-muted); }
+.cm-live-preview-task i {
+  font-size: 1.1em;
+  vertical-align: -0.05em;
+}
+.cm-live-preview-task.open { color: var(--red); }
+.cm-live-preview-task.done { color: var(--text-muted); }
+.cm-live-preview-task.cancelled { color: var(--text-muted); }
+.cm-live-preview-task.scheduled { color: var(--accent); }
+
+.cm-live-preview-task-done-line { color: var(--text-muted); }
 
 /* ── Scrollbar styling ── */
 
