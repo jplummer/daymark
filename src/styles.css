@@ -4,11 +4,11 @@
   box-sizing: border-box;
 }
 
-/* ── Color tokens — adapt to system light/dark mode ── */
+/* ── Color tokens — JP Dieter Rams New York theme ── */
 
 :root {
   --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
+  --bg-secondary: #F2F3F5;
   --bg-tertiary: #eaeaea;
   --bg-hover: #e8e8e8;
   --bg-active: #dcdcdc;
@@ -16,43 +16,49 @@
   --text-primary: #333333;
   --text-secondary: #666666;
   --text-muted: #999999;
-  --accent: #007acc;
+  --accent: #BF1B1B;
+  --accent2: #0091f8;
   --selection: #80c4ff;
   --cursor: #333333;
-  --link: #0066cc;
+  --heading: #736B1E;
+  --link: #BF1B1B;
   --green: #4a8c3f;
-  --red: #cc3333;
+  --red: #ED3F1C;
+  --syntax-fade: #35000000;
   --scrollbar: #c0c0c0;
   --scrollbar-hover: #a0a0a0;
-  --resize-handle: #007acc;
+  --resize-handle: #BF1B1B;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-tertiary: #2a2a2a;
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2a2a2a;
+    --bg-tertiary: #2d2d2d;
     --bg-hover: #2a2d2e;
     --bg-active: #37373d;
     --border: #333333;
-    --text-primary: #d4d4d4;
+    --text-primary: #e0e0e0;
     --text-secondary: #aaaaaa;
     --text-muted: #666666;
-    --accent: #007acc;
+    --accent: #FF4D4D;
+    --accent2: #4DB8FF;
     --selection: #2a5f9e;
-    --cursor: #d4d4d4;
-    --link: #569cd6;
+    --cursor: #e0e0e0;
+    --heading: #C4B95A;
+    --link: #FF4D4D;
     --green: #6a9955;
-    --red: #f44747;
+    --red: #FF6B4D;
+    --syntax-fade: #35ffffff;
     --scrollbar: #444444;
     --scrollbar-hover: #555555;
-    --resize-handle: #007acc;
+    --resize-handle: #FF4D4D;
   }
 }
 
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'SF Pro', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -340,7 +346,7 @@ html, body {
 
 .cm-editor .cm-scroller {
   padding: 16px 24px;
-  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  font-family: 'SF Pro', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.6;
 }
 
@@ -372,14 +378,41 @@ html, body {
   background: var(--selection);
 }
 
-/* ── Live preview heading styles ── */
+/* ── Live preview heading styles — New York serif, gold ── */
 
-.cm-live-preview-h1 { font-size: 1.6em; font-weight: 700; }
-.cm-live-preview-h2 { font-size: 1.35em; font-weight: 700; }
+.cm-line.cm-live-preview-h1,
+.cm-line.cm-live-preview-h2,
+.cm-line.cm-live-preview-h3,
+.cm-line.cm-live-preview-h4,
+.cm-line.cm-live-preview-h5,
+.cm-line.cm-live-preview-h6 {
+  font-family: 'New York', 'New York Large', 'Iowan Old Style', Georgia, serif;
+  color: var(--heading);
+  text-decoration: none;
+}
+
+/* Override CM6 default syntax highlighting on heading lines */
+.cm-line.cm-live-preview-h1 span,
+.cm-line.cm-live-preview-h2 span,
+.cm-line.cm-live-preview-h3 span,
+.cm-line.cm-live-preview-h4 span,
+.cm-line.cm-live-preview-h5 span,
+.cm-line.cm-live-preview-h6 span {
+  text-decoration: none !important;
+}
+
+.cm-live-preview-h1 { font-size: 1.6em; font-weight: 600; }
+.cm-live-preview-h2 { font-size: 1.35em; font-weight: 600; }
 .cm-live-preview-h3 { font-size: 1.15em; font-weight: 600; }
-.cm-live-preview-h4 { font-size: 1.05em; font-weight: 600; }
+.cm-live-preview-h4 { font-size: 1.0em; font-weight: 600; }
 .cm-live-preview-h5 { font-size: 1.0em; font-weight: 600; }
-.cm-live-preview-h6 { font-size: 0.95em; font-weight: 600; color: var(--text-secondary); }
+.cm-live-preview-h6 { font-size: 0.93em; font-weight: 600; }
+
+/* ── Faded syntax markers — visible on cursor line at low opacity ── */
+
+.cm-live-preview-syntax-fade {
+  color: var(--syntax-fade);
+}
 
 /* ── Live preview inline styles ── */
 
@@ -388,29 +421,38 @@ html, body {
 .cm-live-preview-strikethrough { text-decoration: line-through; color: var(--text-muted); }
 .cm-live-preview-code {
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace;
+  font-size: 0.9375em;
+  color: var(--heading);
   background: var(--bg-tertiary);
   border-radius: 3px;
   padding: 1px 4px;
 }
-.cm-live-preview-wikilink {
-  color: var(--link);
+.cm-live-preview-wikilink,
+.cm-live-preview-wikilink span {
+  color: var(--link) !important;
+  text-decoration: none !important;
   cursor: pointer;
 }
-.cm-live-preview-wikilink:hover {
-  text-decoration: underline;
+.cm-live-preview-wikilink:hover,
+.cm-live-preview-wikilink:hover span {
+  text-decoration: underline !important;
 }
 
 /* ── Live preview external link styles ── */
 
-.cm-live-preview-extlink {
-  color: var(--link);
+.cm-live-preview-extlink,
+.cm-live-preview-extlink span {
+  color: var(--link) !important;
+  text-decoration: none !important;
   cursor: pointer;
 }
-.cm-live-preview-extlink:hover {
-  text-decoration: underline;
+.cm-live-preview-extlink:hover,
+.cm-live-preview-extlink:hover span {
+  text-decoration: underline !important;
 }
-.cm-live-preview-extlink-arrow {
-  color: var(--link);
+.cm-live-preview-extlink-arrow,
+.cm-live-preview-extlink-arrow span {
+  color: var(--link) !important;
   cursor: pointer;
   font-size: 0.85em;
 }
@@ -427,7 +469,7 @@ html, body {
 .cm-live-preview-task.open { color: var(--red); }
 .cm-live-preview-task.done { color: var(--text-muted); }
 .cm-live-preview-task.cancelled { color: var(--text-muted); }
-.cm-live-preview-task.scheduled { color: var(--accent); }
+.cm-live-preview-task.scheduled { color: var(--accent2); }
 
 .cm-live-preview-task-done-line { color: var(--text-muted); }
 

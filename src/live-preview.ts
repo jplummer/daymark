@@ -82,6 +82,7 @@ class LinkArrowWidget extends WidgetType {
 }
 
 const hidden = Decoration.replace({ widget: new HiddenWidget() });
+const syntaxFade = Decoration.mark({ class: 'cm-live-preview-syntax-fade' });
 
 // --- Line decorations ---
 
@@ -111,13 +112,15 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
     const text = line.text;
     const onCursorLine = (i === cursorLine);
 
-    // Headings: font size always applied; # prefix inline-scoped
+    // Headings: font size always applied; # prefix hidden or faded
     const headingMatch = text.match(/^(#{1,6})\s/);
     if (headingMatch) {
       const level = headingMatch[1].length;
       decorations.push(headingLineDecos[level].range(line.from));
       const hashEnd = line.from + headingMatch[0].length;
-      if (!(onCursorLine && cursorIn(line.from, hashEnd))) {
+      if (onCursorLine && cursorIn(line.from, hashEnd)) {
+        decorations.push(syntaxFade.range(line.from, line.from + headingMatch[1].length));
+      } else {
         decorations.push(hidden.range(line.from, hashEnd));
       }
     }
@@ -128,85 +131,126 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
     for (const match of text.matchAll(/(\*\*|__)(.+?)\1/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
       const markerLen = match[1].length;
-      decorations.push(hidden.range(start, start + markerLen));
-      decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
-        start + markerLen, start + markerLen + match[2].length
-      ));
-      decorations.push(hidden.range(end - markerLen, end));
+      if (onCursorLine && cursorIn(start, end)) {
+        decorations.push(syntaxFade.range(start, start + markerLen));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
+          start + markerLen, start + markerLen + match[2].length
+        ));
+        decorations.push(syntaxFade.range(end - markerLen, end));
+      } else {
+        decorations.push(hidden.range(start, start + markerLen));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
+          start + markerLen, start + markerLen + match[2].length
+        ));
+        decorations.push(hidden.range(end - markerLen, end));
+      }
     }
 
     // Italic: *text* or _text_ (but not ** or __)
     for (const match of text.matchAll(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
       const content = match[1] || match[2];
-      decorations.push(hidden.range(start, start + 1));
-      decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
-        start + 1, start + 1 + content.length
-      ));
-      decorations.push(hidden.range(end - 1, end));
+      if (onCursorLine && cursorIn(start, end)) {
+        decorations.push(syntaxFade.range(start, start + 1));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
+          start + 1, start + 1 + content.length
+        ));
+        decorations.push(syntaxFade.range(end - 1, end));
+      } else {
+        decorations.push(hidden.range(start, start + 1));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
+          start + 1, start + 1 + content.length
+        ));
+        decorations.push(hidden.range(end - 1, end));
+      }
     }
 
     // Strikethrough: ~~text~~
     for (const match of text.matchAll(/~~(.+?)~~/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
-      decorations.push(hidden.range(start, start + 2));
-      decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
-        start + 2, start + 2 + match[1].length
-      ));
-      decorations.push(hidden.range(end - 2, end));
+      if (onCursorLine && cursorIn(start, end)) {
+        decorations.push(syntaxFade.range(start, start + 2));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
+          start + 2, start + 2 + match[1].length
+        ));
+        decorations.push(syntaxFade.range(end - 2, end));
+      } else {
+        decorations.push(hidden.range(start, start + 2));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
+          start + 2, start + 2 + match[1].length
+        ));
+        decorations.push(hidden.range(end - 2, end));
+      }
     }
 
     // Inline code: `text`
     for (const match of text.matchAll(/(?<!`)(`)((?!`).+?)(`)/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
-      decorations.push(hidden.range(start, start + 1));
-      decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
-        start + 1, start + 1 + match[2].length
-      ));
-      decorations.push(hidden.range(end - 1, end));
+      if (onCursorLine && cursorIn(start, end)) {
+        decorations.push(syntaxFade.range(start, start + 1));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
+          start + 1, start + 1 + match[2].length
+        ));
+        decorations.push(syntaxFade.range(end - 1, end));
+      } else {
+        decorations.push(hidden.range(start, start + 1));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
+          start + 1, start + 1 + match[2].length
+        ));
+        decorations.push(hidden.range(end - 1, end));
+      }
     }
 
     // Wiki-links: [[text]]
     for (const match of text.matchAll(/\[\[(.+?)\]\]/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
-      decorations.push(hidden.range(start, start + 2));
-      decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
-        start + 2, start + 2 + match[1].length
-      ));
-      decorations.push(hidden.range(end - 2, end));
+      if (onCursorLine && cursorIn(start, end)) {
+        decorations.push(syntaxFade.range(start, start + 2));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
+          start + 2, start + 2 + match[1].length
+        ));
+        decorations.push(syntaxFade.range(end - 2, end));
+      } else {
+        decorations.push(hidden.range(start, start + 2));
+        decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
+          start + 2, start + 2 + match[1].length
+        ));
+        decorations.push(hidden.range(end - 2, end));
+      }
     }
 
     // External links: [text](url) and bare URLs
     for (const match of text.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)|(https?:\/\/\S+)/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
-      if (onCursorLine && cursorIn(start, end)) continue;
 
       if (match[1] && match[2]) {
         const linkText = match[1];
         const url = match[2];
-        decorations.push(hidden.range(start, start + 1));
-        decorations.push(Decoration.mark({
-          class: 'cm-live-preview-extlink',
-          attributes: { 'data-href': url },
-        }).range(start + 1, start + 1 + linkText.length));
-        decorations.push(hidden.range(
-          start + 1 + linkText.length, end
-        ));
-        decorations.push(Decoration.widget({
-          widget: new LinkArrowWidget(url),
-          side: 1,
-        }).range(start + 1 + linkText.length));
+        if (onCursorLine && cursorIn(start, end)) {
+          decorations.push(syntaxFade.range(start, start + 1));
+          decorations.push(Decoration.mark({
+            class: 'cm-live-preview-extlink',
+            attributes: { 'data-href': url },
+          }).range(start + 1, start + 1 + linkText.length));
+          decorations.push(syntaxFade.range(start + 1 + linkText.length, end));
+        } else {
+          decorations.push(hidden.range(start, start + 1));
+          decorations.push(Decoration.mark({
+            class: 'cm-live-preview-extlink',
+            attributes: { 'data-href': url },
+          }).range(start + 1, start + 1 + linkText.length));
+          decorations.push(hidden.range(start + 1 + linkText.length, end));
+          decorations.push(Decoration.widget({
+            widget: new LinkArrowWidget(url),
+            side: 1,
+          }).range(start + 1 + linkText.length));
+        }
       } else if (match[3]) {
         const url = match[3];
         decorations.push(Decoration.mark({
