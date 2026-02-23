@@ -102,7 +102,7 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Done when:** You can navigate between notes via the sidebar, and edits made in NotePlan appear in Daymark without restarting.
 
-**Status: Mostly complete.** Sidebar with file tree (note titles, not filenames), Daily/Weekly quick links, Archive/Templates/Trash separated below. Back/forward navigation with Cmd+[/]. Weekly notes show date ranges and support prev/next. Project notes show path breadcrumb with emphasized title. Light/dark mode via system preference. Remix Icons throughout. Drag-to-resize sidebar. File watching still TODO.
+**Status: Complete.** Sidebar with file tree (note titles, not filenames), Daily/Weekly quick links, Archive/Templates/Trash separated below. Back/forward navigation with Cmd+[/]. Weekly notes show date ranges and support prev/next. Project notes show path breadcrumb with emphasized title. Light/dark mode via system preference. Remix Icons throughout. Drag-to-resize sidebar. External change detection via polling (2s note, 5s directory).
 
 ### Phase 3: Note index and links
 
@@ -240,3 +240,13 @@ Items completed before 2026-02-22 (exact dates not tracked):
 - **Phase 1: Walking skeleton — Complete.** Open a markdown file from NotePlan's iCloud directory, edit it with live preview, save it back. Tauri + CM6 stack works end-to-end. Edits round-trip to NotePlan. Added date navigation (prev/today/next) and live preview decorations (headings, bold, italic, strikethrough, inline code, wiki-links, task checkboxes). Line numbers removed per preference. *(pre-tracking)*
 - **Weekly notes (resolved)** — Stored in `Calendar/` alongside daily notes. Filename: `YYYY-Wnn.txt` (e.g. `2026-W07.txt`). 144 weekly notes exist (2022–2026). Content is a week plan: tasks for the week not assigned to a specific day. Support `<YYYY-Wnn` back-references (same scheduling mechanism as daily notes). Open tasks from the weekly note are shown in a reference panel at the top of all daily notes in that week. *(pre-tracking)*
 - **Scheduling: completion model (resolved)** — For non-synced `>YYYY-MM-DD` tasks, the source stays `[>]` ("delegated") regardless of destination state. Completion status lives only on the `<date` destination copy. The source doesn't need to know if the task was done — `[>]` means "sent elsewhere." The compact calendar only needs to check the target date for open items, not trace back to every source. (Some older notes have `[x]` + `>date` — likely tasks completed early on the source before the scheduled date; the `>date` is an inert artifact.) *(pre-tracking)*
+
+Items completed 2026-02-22:
+
+- **Fix text selection bug** — Live preview no longer rebuilds decorations on every selection event; only when cursor position changes with a collapsed selection.
+- **Inline-scoped decorations** — Markdown syntax only reveals for the specific element the cursor is within, not the whole line. Heading font size always applied; only `#` prefix is inline-scoped.
+- **External link handling** — Markdown links `[text](url)` show as "text ↗" on non-cursor lines. Bare URLs styled as clickable links. Click opens in default browser via Tauri opener. Ctrl-click (macOS right-click) does not follow.
+- **Paste URL → auto-title** — Pasting a bare URL wraps it as `[Fetching title…](url)` and async-fetches the `<title>` tag, replacing the placeholder.
+- **Task icons** — All task markup (`- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `) replaced by Remix Icon circle icons (open, done, cancelled, scheduled). Done tasks mute the entire line. `* ` bullets left as plain markdown.
+- **Selection highlight fix** — Replaced `drawSelection()` with native browser selection for reliable visibility over opaque line backgrounds.
+- **Phase 2: File watching — Complete.** External change detection via polling (readTextFile every 2s for current note, readDir every 5s for sidebar). Native `watch()` didn't work reliably with NotePlan's Setapp container.

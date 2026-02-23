@@ -8,7 +8,6 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 - ⚠️ **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support.
 - **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better.
-- ⚠️ **Task iconography** — NotePlan's task icons (circle, circle+check, circle+arrow, circle+x) work on their own but fight with the markdown syntax, especially done `[x]` vs cancelled `[-]` (the icon for cancelled has an "x" while the markdown uses `-`). Design better icons that reinforce rather than contradict the underlying syntax.
 - **Make it clear what's an internal and external link** — markdown link for external, double bracket for internal. Visual distinction in the editor.
 - **Proportional fonts for body text** — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
 
@@ -65,3 +64,8 @@ Things we might want but aren't committed to. Some need significant investigatio
 Items completed before 2026-02-22 (exact dates not tracked):
 
 - **Icon source selection** — Evaluated icon options; chose Remix Icon via npm. *(pre-tracking)*
+
+Items completed 2026-02-22:
+
+- **Task iconography** — Resolved. Circle-based Remix Icons where each icon maps to its markdown character's meaning: empty circle (open), circle+checkmark (done `[x]`), circle+horizontal dash (cancelled `[-]`), circle+right arrow (scheduled `[>]`). Cancelled icon avoids X shape to prevent conflict with `[x]` done markdown.
+- **Internal vs external link distinction** — External links show as "text ↗" with blue styling; wiki-links `[[text]]` show with distinct link styling. Both clickable with different behavior (external opens browser, wiki-links will navigate internally in Phase 3).
