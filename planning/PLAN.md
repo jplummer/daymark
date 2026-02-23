@@ -102,6 +102,8 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Done when:** You can navigate between notes via the sidebar, and edits made in NotePlan appear in Daymark without restarting.
 
+**Status: Mostly complete.** Sidebar with file tree (note titles, not filenames), Daily/Weekly quick links, Archive/Templates/Trash separated below. Back/forward navigation with Cmd+[/]. Weekly notes show date ranges and support prev/next. Project notes show path breadcrumb with emphasized title. Light/dark mode via system preference. Remix Icons throughout. Drag-to-resize sidebar. File watching still TODO.
+
 ### Phase 3: Note index and links
 
 **Goal:** Wiki-links resolve, backlinks work, mentions and tags are clickable.

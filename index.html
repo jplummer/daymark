@@ -8,15 +8,42 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <div id="toolbar">
-      <div id="nav">
-        <button id="nav-prev" title="Previous day">‹</button>
-        <button id="nav-today" title="Go to today">Today</button>
-        <button id="nav-next" title="Next day">›</button>
+    <div id="app">
+      <div id="sidebar">
+        <div id="sidebar-quick-links">
+          <button id="link-daily" class="quick-link" title="Today's daily note">
+            <span class="tree-item-arrow-spacer"></span>
+            <i class="ri-calendar-line quick-link-icon"></i>
+            <span>Daily</span>
+          </button>
+          <button id="link-weekly" class="quick-link" title="This week's note">
+            <span class="tree-item-arrow-spacer"></span>
+            <i class="ri-calendar-check-line quick-link-icon"></i>
+            <span>Weekly</span>
+          </button>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div id="sidebar-tree"></div>
+        <div class="sidebar-spacer"></div>
+        <div id="sidebar-special"></div>
       </div>
-      <span id="filename">No file open</span>
-      <span id="status"></span>
+      <div id="resize-handle"></div>
+      <div id="main">
+        <div id="toolbar">
+          <div id="nav-history">
+            <button id="nav-back" title="Back (⌘[)" disabled><i class="ri-arrow-go-back-line"></i></button>
+            <button id="nav-forward" title="Forward (⌘])" disabled><i class="ri-arrow-go-forward-line"></i></button>
+          </div>
+          <span id="note-title">No file open</span>
+          <div id="nav-date" class="hidden">
+            <button id="nav-prev" title="Previous"><i class="ri-arrow-left-s-line"></i></button>
+            <button id="nav-today" title="Go to current"><i class="ri-focus-3-line"></i></button>
+            <button id="nav-next" title="Next"><i class="ri-arrow-right-s-line"></i></button>
+          </div>
+          <span id="status"></span>
+        </div>
+        <div id="editor"></div>
+      </div>
     </div>
-    <div id="editor"></div>
   </body>
 </html>
