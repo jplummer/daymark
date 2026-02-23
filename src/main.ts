@@ -9,11 +9,11 @@ import {
   indentOnInput,
   bracketMatching,
 } from '@codemirror/language';
-import { readTextFile, writeTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, readDir, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { livePreview } from './live-preview';
-import { initSidebar, setActiveTreeItem, TreeNode } from './sidebar';
+import { initSidebar, setActiveTreeItem, refreshSidebar, TreeNode } from './sidebar';
 import 'remixicon/fonts/remixicon.css';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
@@ -100,9 +100,15 @@ let currentNote: NoteLocation | null = null;
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let view: EditorView | null = null;
 let isDirty = false;
+let lastSavedContent: string | null = null; // Content as last written by us
 
 const navHistory: NoteLocation[] = [];
 let navIndex = -1;
+
+// Polling intervals for external change detection
+let notePollInterval: ReturnType<typeof setInterval> | null = null;
+let dirPollInterval: ReturnType<typeof setInterval> | null = null;
+let lastDirSnapshot: string | null = null;
 
 // --- UI helpers ---
 
@@ -180,6 +186,7 @@ function scheduleSave() {
     try {
       const content = view.state.doc.toString();
       await writeTextFile(currentNote.relPath, content, { baseDir: BaseDirectory.Home });
+      lastSavedContent = content;
       isDirty = false;
       setStatus('Saved');
       setTimeout(() => setStatus(''), 1500);
@@ -197,7 +204,9 @@ async function flushSave(): Promise<void> {
   }
   if (view && currentNote && isDirty) {
     try {
-      await writeTextFile(currentNote.relPath, view.state.doc.toString(), { baseDir: BaseDirectory.Home });
+      const content = view.state.doc.toString();
+      await writeTextFile(currentNote.relPath, content, { baseDir: BaseDirectory.Home });
+      lastSavedContent = content;
       isDirty = false;
     } catch (err) {
       console.error('[daymark] Flush save failed:', err);
@@ -352,6 +361,66 @@ const editorExtensions = [
   pasteUrlHandler,
 ];
 
+// --- Polling for external changes ---
+
+function pollCurrentNote(relPath: string) {
+  if (notePollInterval) clearInterval(notePollInterval);
+
+  notePollInterval = setInterval(async () => {
+    if (currentNote?.relPath !== relPath || !view) return;
+    if (isDirty) return; // Don't clobber unsaved local edits
+
+    try {
+      const diskContent = await readTextFile(relPath, { baseDir: BaseDirectory.Home });
+
+      // Skip if this matches what we last wrote
+      if (diskContent === lastSavedContent) return;
+
+      const editorContent = view.state.doc.toString();
+      if (diskContent === editorContent) return;
+
+      const cursorPos = view.state.selection.main.head;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: diskContent },
+        selection: { anchor: Math.min(cursorPos, diskContent.length) },
+      });
+      lastSavedContent = diskContent;
+      setStatus('Reloaded (external change)');
+      setTimeout(() => setStatus(''), 2000);
+    } catch {
+      // File might not exist yet — ignore
+    }
+  }, 2000);
+}
+
+async function getDirSnapshot(): Promise<string> {
+  const notesPath = `${NOTEPLAN_BASE}/Notes`;
+  try {
+    const entries = await readDir(notesPath, { baseDir: BaseDirectory.Home });
+    return entries.map((e) => `${e.name}:${e.isDirectory}`).sort().join('\n');
+  } catch {
+    return '';
+  }
+}
+
+async function pollNotesDirectory() {
+  if (dirPollInterval) clearInterval(dirPollInterval);
+
+  lastDirSnapshot = await getDirSnapshot();
+
+  dirPollInterval = setInterval(async () => {
+    try {
+      const snapshot = await getDirSnapshot();
+      if (snapshot !== lastDirSnapshot) {
+        lastDirSnapshot = snapshot;
+        refreshSidebar();
+      }
+    } catch {
+      // Ignore transient read errors
+    }
+  }, 5000);
+}
+
 // --- Navigation ---
 
 async function navigateTo(note: NoteLocation, addToHistory = true) {
@@ -369,6 +438,7 @@ async function navigateTo(note: NoteLocation, addToHistory = true) {
   setActiveTreeItem(note.relPath);
 
   const content = await loadFile(note.relPath);
+  lastSavedContent = content;
 
   if (view) {
     view.setState(EditorState.create({ doc: content, extensions: editorExtensions }));
@@ -380,6 +450,7 @@ async function navigateTo(note: NoteLocation, addToHistory = true) {
     });
   }
 
+  pollCurrentNote(note.relPath);
   setStatus('');
   view.focus();
 }
@@ -521,6 +592,7 @@ async function init() {
 
   await navigateTo(dailyNote(new Date()));
   await sidebarReady;
+  pollNotesDirectory();
 }
 
 init().catch((err) => {

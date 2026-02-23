@@ -204,45 +204,66 @@ export function setActiveTreeItem(relPath: string): void {
   if (item) item.classList.add('active');
 }
 
-export async function initSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
+// Stored so refreshSidebar can reuse it
+let sidebarNavigateCallback: ((node: TreeNode) => void) | null = null;
+
+async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
   const treeContainer = document.getElementById('sidebar-tree');
   const specialContainer = document.getElementById('sidebar-special');
+  if (!treeContainer) return;
+
+  const notesPath = `${NOTEPLAN_BASE}/Notes`;
+
+  const [mainTree, allEntries] = await Promise.all([
+    readTree(notesPath, true),
+    readDir(notesPath, { baseDir: BaseDirectory.Home }),
+  ]);
+
+  const specialEntries = allEntries.filter((e) => e.isDirectory && SPECIAL_FOLDERS.has(e.name));
+  const specialNodes: TreeNode[] = [];
+  for (const entry of specialEntries) {
+    const childPath = `${notesPath}/${entry.name}`;
+    const children = await readTree(childPath);
+    specialNodes.push({
+      name: entry.name,
+      title: entry.name.replace(/^@/, ''),
+      relPath: childPath,
+      isDir: true,
+      children,
+    });
+  }
+
+  treeContainer.textContent = '';
+  renderTree(treeContainer, mainTree, 0, onNavigate);
+
+  if (specialContainer) {
+    specialContainer.textContent = '';
+    if (specialNodes.length > 0) {
+      renderSpecialFolders(specialContainer, specialNodes, onNavigate);
+    }
+  }
+}
+
+export async function initSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
+  sidebarNavigateCallback = onNavigate;
+  const treeContainer = document.getElementById('sidebar-tree');
   if (!treeContainer) return;
 
   treeContainer.textContent = 'Loading…';
 
   try {
-    const notesPath = `${NOTEPLAN_BASE}/Notes`;
-
-    // Load main tree (excluding special folders) and special folders in parallel
-    const [mainTree, allEntries] = await Promise.all([
-      readTree(notesPath, true),
-      readDir(notesPath, { baseDir: BaseDirectory.Home }),
-    ]);
-
-    // Build special folder nodes
-    const specialEntries = allEntries.filter((e) => e.isDirectory && SPECIAL_FOLDERS.has(e.name));
-    const specialNodes: TreeNode[] = [];
-    for (const entry of specialEntries) {
-      const childPath = `${notesPath}/${entry.name}`;
-      const children = await readTree(childPath);
-      specialNodes.push({
-        name: entry.name,
-        title: entry.name.replace(/^@/, ''),
-        relPath: childPath,
-        isDir: true,
-        children,
-      });
-    }
-
-    treeContainer.textContent = '';
-    renderTree(treeContainer, mainTree, 0, onNavigate);
-
-    if (specialContainer && specialNodes.length > 0) {
-      renderSpecialFolders(specialContainer, specialNodes, onNavigate);
-    }
+    await buildSidebar(onNavigate);
   } catch (err) {
     console.error('[daymark] Failed to load sidebar:', err);
     treeContainer.textContent = 'Failed to load notes';
+  }
+}
+
+export async function refreshSidebar(): Promise<void> {
+  if (!sidebarNavigateCallback) return;
+  try {
+    await buildSidebar(sidebarNavigateCallback);
+  } catch (err) {
+    console.error('[daymark] Failed to refresh sidebar:', err);
   }
 }
