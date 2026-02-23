@@ -222,11 +222,19 @@ Inspected existing NotePlan files to determine on-disk format:
 
 ## Open Questions
 
-- **Weekly notes (resolved):** Stored in `Calendar/` alongside daily notes. Filename: `YYYY-Wnn.txt` (e.g. `2026-W07.txt`). 144 weekly notes exist (2022–2026). Content is a week plan: tasks for the week not assigned to a specific day. Support `<YYYY-Wnn` back-references (same scheduling mechanism as daily notes). Open tasks from the weekly note are shown in a reference panel at the top of all daily notes in that week.
 - **Task state syntax:** Open tasks are usually just `- text` (no brackets), but `- [ ] text` also exists in some older notes. Both forms must be treated as open tasks. Brackets appear consistently for done `[x]`, cancelled `[-]`, and scheduled `[>]`. More states may exist.
 - **Template format:** How does NotePlan store and apply templates? Inspect `Notes/@Templates/`.
 - **Scheduling compatibility:** We must match NotePlan's on-disk format for scheduled tasks so both apps can coexist. NotePlan docs describe intended behavior; real notes reveal actual behavior. When they diverge, match what's in the files.
-- **Scheduling: completion model (resolved)** — For non-synced `>YYYY-MM-DD` tasks, the source stays `[>]` ("delegated") regardless of destination state. Completion status lives only on the `<date` destination copy. The source doesn't need to know if the task was done — `[>]` means "sent elsewhere." The compact calendar only needs to check the target date for open items, not trace back to every source. (Some older notes have `[x]` + `>date` — likely tasks completed early on the source before the scheduled date; the `>date` is an inert artifact.)
 - **Calendar grid vs. `>today`:** Tasks scheduled with `>today` should only show as open on today's date and the originating date in the compact calendar — NOT on every intervening day. Document this constraint when implementing the calendar.
 - **@mention task sync:** There may be value in helping sync or surface tasks across `@mentions` (e.g. see all open tasks tagged with `@PersonName`). Discuss later.
 - **iCloud Drive vs Setapp container:** The FEATURES.md sync strategy mentions iCloud Drive, but the Setapp version uses a different path. Need to determine if non-Setapp installs still use iCloud Drive, and whether we want to support both.
+
+---
+
+## Archive
+
+Items completed before 2026-02-22 (exact dates not tracked):
+
+- **Phase 1: Walking skeleton — Complete.** Open a markdown file from NotePlan's iCloud directory, edit it with live preview, save it back. Tauri + CM6 stack works end-to-end. Edits round-trip to NotePlan. Added date navigation (prev/today/next) and live preview decorations (headings, bold, italic, strikethrough, inline code, wiki-links, task checkboxes). Line numbers removed per preference. *(pre-tracking)*
+- **Weekly notes (resolved)** — Stored in `Calendar/` alongside daily notes. Filename: `YYYY-Wnn.txt` (e.g. `2026-W07.txt`). 144 weekly notes exist (2022–2026). Content is a week plan: tasks for the week not assigned to a specific day. Support `<YYYY-Wnn` back-references (same scheduling mechanism as daily notes). Open tasks from the weekly note are shown in a reference panel at the top of all daily notes in that week. *(pre-tracking)*
+- **Scheduling: completion model (resolved)** — For non-synced `>YYYY-MM-DD` tasks, the source stays `[>]` ("delegated") regardless of destination state. Completion status lives only on the `<date` destination copy. The source doesn't need to know if the task was done — `[>]` means "sent elsewhere." The compact calendar only needs to check the target date for open items, not trace back to every source. (Some older notes have `[x]` + `>date` — likely tasks completed early on the source before the scheduled date; the `>date` is an inert artifact.) *(pre-tracking)*
