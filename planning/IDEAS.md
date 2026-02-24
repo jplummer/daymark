@@ -41,7 +41,7 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 ### Reference
 
-- **NotePlan theme reference** — Favorite theme is "JP Dieter Rams New York" at `~/Library/Containers/co.noteplan.NotePlan-setapp/.../Themes/JP Dieter Rams New York.json`. Key style choices: gold headings (#736B1E) in New York Semibold, red open tasks (#ED3F1C), faded syntax markers (#35000000), subtle tag/mention backgrounds (#20d87001), highlighted text (yellow bg), code in SF Mono with light gray bg. Also shows NotePlan's full style vocabulary (flagged states, working-on, schedule links, etc.) which hints at features we'll encounter.
+- **NotePlan theme reference** — Favorite theme is "JP Dieter Rams New York". All four JP theme JSONs are cached in `planning/reference/` for easy access. Key style choices: gold headings (#736B1E) in New York Semibold, red open tasks (#ED3F1C), faded syntax markers (#35000000), subtle tag/mention backgrounds (#20d87001), highlighted text (yellow bg), code in SF Mono with light gray bg. Also shows NotePlan's full style vocabulary (flagged states, working-on, schedule links, etc.) which hints at features we'll encounter. Source: `~/Library/Containers/co.noteplan.NotePlan-setapp/.../Themes/`.
 
 ---
 

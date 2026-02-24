@@ -7,8 +7,8 @@
  * line doesn't disrupt unrelated formatted elements. Heading font sizes
  * are always applied; only the # prefix is inline-scoped.
  *
- * Currently handles: headings, bold, italic, wiki-links, inline code,
- * strikethrough, task checkboxes, and external links.
+ * Currently handles: headings, blockquotes, bold, italic, wiki-links,
+ * inline code, strikethrough, task checkboxes, and external links.
  *
  * Styling is hard-coded for now. The decoration styles live in
  * styles.css under .cm-live-preview-* classes, and can be made
@@ -24,7 +24,6 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { EditorState, Range } from '@codemirror/state';
-import { syntaxTree } from '@codemirror/language';
 
 // --- Widgets for replacing syntax tokens ---
 
@@ -91,7 +90,11 @@ for (let level = 1; level <= 6; level++) {
   headingLineDecos[level] = Decoration.line({ class: `cm-live-preview-h${level}` });
 }
 
+const blockquoteLineDeco = Decoration.line({ class: 'cm-live-preview-blockquote' });
 const doneTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-done-line' });
+const cancelledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-cancelled-line' });
+const cancelledTextMark = Decoration.mark({ class: 'cm-live-preview-task-cancelled-text' });
+const scheduledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-scheduled-line' });
 
 // --- Build decorations for a given state ---
 //
@@ -122,6 +125,18 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
         decorations.push(syntaxFade.range(line.from, line.from + headingMatch[1].length));
       } else {
         decorations.push(hidden.range(line.from, hashEnd));
+      }
+    }
+
+    // Blockquotes: `> text`
+    const quoteMatch = text.match(/^(> ?)/);
+    if (quoteMatch) {
+      decorations.push(blockquoteLineDeco.range(line.from));
+      const markerEnd = line.from + quoteMatch[0].length;
+      if (onCursorLine && cursorIn(line.from, markerEnd)) {
+        decorations.push(syntaxFade.range(line.from, markerEnd));
+      } else {
+        decorations.push(hidden.range(line.from, markerEnd));
       }
     }
 
@@ -209,17 +224,18 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
     for (const match of text.matchAll(/\[\[(.+?)\]\]/g)) {
       const start = line.from + match.index!;
       const end = start + match[0].length;
+      const linkTarget = match[1];
+      const linkMark = Decoration.mark({
+        class: 'cm-live-preview-wikilink',
+        attributes: { 'data-link': linkTarget },
+      });
       if (onCursorLine && cursorIn(start, end)) {
         decorations.push(syntaxFade.range(start, start + 2));
-        decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
-          start + 2, start + 2 + match[1].length
-        ));
+        decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
         decorations.push(syntaxFade.range(end - 2, end));
       } else {
         decorations.push(hidden.range(start, start + 2));
-        decorations.push(Decoration.mark({ class: 'cm-live-preview-wikilink' }).range(
-          start + 2, start + 2 + match[1].length
-        ));
+        decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
         decorations.push(hidden.range(end - 2, end));
       }
     }
@@ -277,13 +293,24 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
         else if (marker === '>') taskState = 'scheduled';
         else taskState = 'open';
       } else if (taskMatch[5]) {
-        taskState = 'open';
+        // `- ` alone is an open task, unless followed by short bracket syntax
+        // like `[]`, `[x]`, `[ ]` — that's a checkbox being edited mid-keystroke
+        const afterDash = text.slice(indent + 2);
+        if (!afterDash.match(/^\[.?\]/)) {
+          taskState = 'open';
+        }
       }
       // `* ` (taskMatch[4]) is a plain bullet, not a task — skip
 
-      // Done tasks always get muted line styling
       if (taskState === 'done') {
         decorations.push(doneTaskLineDeco.range(line.from));
+      } else if (taskState === 'cancelled') {
+        decorations.push(cancelledTaskLineDeco.range(line.from));
+        if (prefixEnd < line.to) {
+          decorations.push(cancelledTextMark.range(prefixEnd, line.to));
+        }
+      } else if (taskState === 'scheduled') {
+        decorations.push(scheduledTaskLineDeco.range(line.from));
       }
 
       // Icon widget is inline-scoped
@@ -291,6 +318,27 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
         const widget = new TaskWidget(taskState);
         decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
       }
+    }
+
+    // @mentions: @FirstnameLastname (not preceded by alphanumeric or dot — avoids emails)
+    for (const match of text.matchAll(/(?<![a-zA-Z0-9.])(@[A-Za-z]\w+)/g)) {
+      const start = line.from + match.index!;
+      const end = start + match[1].length;
+      decorations.push(Decoration.mark({
+        class: 'cm-live-preview-mention',
+        attributes: { 'data-mention': match[1] },
+      }).range(start, end));
+    }
+
+    // #hashtags: not at line start (avoids headings), requires letter after #
+    for (const match of text.matchAll(/(?:(?<=\s)|^)(?<!^)(#[A-Za-z]\w+)/gm)) {
+      if (match.index === 0) continue; // skip if # is at line start (heading)
+      const start = line.from + match.index!;
+      const end = start + match[1].length;
+      decorations.push(Decoration.mark({
+        class: 'cm-live-preview-hashtag',
+        attributes: { 'data-hashtag': match[1] },
+      }).range(start, end));
     }
   }
 

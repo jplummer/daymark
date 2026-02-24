@@ -1,0 +1,222 @@
+{
+	"name": "JP Dieter Rams New York Dark",
+	"style": "Dark",
+	"author": {
+		"name": "Jon Plummer",
+		"email": "jon@jonplummer.com"
+	},
+	"editor": {
+		"backgroundColor": "#1a1a1a",
+		"altBackgroundColor": "#2d2d2d",
+		"tintColor": "#FF4D4D",
+		"tintColor2": "#4DB8FF",
+		"textColor": "#e0e0e0",
+		"toolbarBackgroundColor": "#2a2a2a",
+		"toolbarIconColor": "#cccccc",
+		"menuItemColor": "#cccccc",
+		"shouldOverwriteFont": false
+	},
+	"this part is not used by NotePlan but is here for reference": {
+		"font": "SFPro-Regular",
+		"font": "NewYork-Semibold",
+		"font": "SFPro-Bold",
+		"font": "SFPro-RegularItalic",
+		"font": "SFPro-BoldItalic",
+		"font": "SFMono-Regular",
+		"font": "Menlo-Regular",
+	},
+	"styles": {
+		"body": {
+			"font": "SFPro-Regular",
+			"color": "#e0e0e0",
+			"size": 16
+		},
+		"title1": {
+			"color": "#C4B95A",
+			"font": "NewYork-Semibold",
+			"size": 28
+		},
+		"title2": {
+			"color": "#C4B95A",
+			"font": "NewYork-Semibold",
+			"size": 24
+		},
+		"title3": {
+			"color": "#C4B95A",
+			"font": "NewYork-Semibold",
+			"size": 20
+		},
+		"title4": {
+			"color": "#C4B95A",
+			"font": "NewYork-Semibold",
+			"size": 16
+		},
+		"title-mark1": {
+			"color": "#35ffffff",
+			"size": 28,
+			"font": "NewYork-Semibold"
+		},
+		"title-mark2": {
+			"color": "#35ffffff",
+			"size": 24,
+			"font": "NewYork-Semibold"
+		},
+		"title-mark3": {
+			"color": "#35ffffff",
+			"size": 20,
+			"font": "NewYork-Semibold"
+		},
+		"title-mark4": {
+			"color": "#35ffffff",
+			"size": 16,
+			"font": "NewYork-Semibold"
+		},
+		"flagged-1": {
+			"backgroundColor": "#11ED8008"
+		},
+		"flagged-2": {
+			"backgroundColor": "#33ED8008"
+		},
+		"flagged-3": {
+			"backgroundColor": "#55ED8008"
+		},
+		"bold": {
+			"font": "SFPro-Bold",
+			"type": "bold"
+		},
+		"bold-left-mark": {
+			"color": "#35ffffff"
+		},
+		"bold-right-mark": {
+			"color": "#35ffffff"
+		},
+		"italic": {
+			"font": "SFPro-RegularItalic",
+			"type": "italic"
+		},
+		"italic-left-mark": {
+			"color": "#35ffffff"
+		},
+		"italic-right-mark": {
+			"color": "#35ffffff"
+		},
+		"boldItalic": {
+			"font": "SFPro-BoldItalic",
+			"type": "bolditalic"
+		},
+		"boldItalic-left-mark": {
+			"color": "#35ffffff"
+		},
+		"boldItalic-right-mark": {
+			"color": "#35ffffff"
+		},
+		"code": {
+			"font": "SFMono-Regular",
+			"color": "#C4B95A",
+			"size": 15
+		},
+		"code-left-backtick": {
+			"color": "#66C4B95A"
+		},
+		"code-right-backtick": {
+			"color": "#66C4B95A"
+		},
+		"code-fence": {
+			"theme": "github-dark",
+			"corner-radius": 8,
+			"body": {
+				"font": "SFMono-Regular",
+				"backgroundColor": "#2A2A2A"
+			},
+			"language-specifier": {
+				"font": "SFMono-Italic",
+				"color": "#888888"
+			},
+			"fence-open": {
+				"color": "#66C4B95A"
+			},
+			"fence-close": {
+				"color": "#66C4B95A"
+			}
+		},
+		"checked": {
+			"color": "#66e0e0e0",
+			"headIndent": 33
+		},
+		"todo": {
+			"font": "noteplanstate",
+			"color": "#FF6B4D",
+			"headIndent": 33,
+			"size": 16
+		},
+		"checked-todo-characters": {
+			"font": "noteplanstate",
+			"headIndent": 33,
+			"size": 16
+		},
+		"special-char": {
+			"font": "Menlo-Regular"
+		},
+		"tabbed": {
+			"headIndent": 43
+		},
+		"quote-mark": {
+			"color": "#66C4B95A",
+			"font": "noteplanstate",
+			"headIndent": 33,
+			"size": 16
+		},
+		"quote-content": {
+			"color": "#b0b0b0",
+			"font": "SFPro-RegularItalic",
+			"type": "italic",
+			"headIndent": 33
+		},
+		"strikethrough": {
+		    "color": "#AA808080",
+		    "strikethroughColor": "#808080"
+		},
+		"strikethrough-left-tilde": {
+		    "color": "#35ffffff"
+		},
+		"strikethrough-right-tilde": {
+		    "color": "#35ffffff"
+		},
+		"underline": {
+			"underlineStyle": 2,
+			"underlineColor": "#808080"
+		},
+		"underline-left-tilde": {
+			"color": "#35ffffff"
+		},
+		"underline-right-tilde": {
+			"color": "#35ffffff"
+		},
+		"hashtag": {
+			"backgroundColor": "#20d87001"
+		},
+		"attag": {
+			"backgroundColor": "#20d87001"
+		},
+		"highlighted": {
+			"backgroundColor": "#66ffff00",
+		},
+		"highlighted-left-marker": {
+			"color": "#35ffffff",
+		},
+		"highlighted-right-marker": {
+			"color": "#35ffffff",
+		},
+		"working-on": { 
+			"backgroundColor": "#30ffff00",
+			"color": "#ffffff"
+		},
+		"link": {},
+		"schedule-to-date-link": {},
+		"done-date": {},
+		"schedule-from-date-link": {},
+		"note-title-link": {},
+		"phonenumber": {}
+	}
+}
+

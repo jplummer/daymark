@@ -469,11 +469,129 @@ html, body {
 .cm-live-preview-task.open { color: var(--red); }
 .cm-live-preview-task.done { color: var(--text-muted); }
 .cm-live-preview-task.cancelled { color: var(--text-muted); }
-.cm-live-preview-task.scheduled { color: var(--accent2); }
+.cm-live-preview-task.scheduled { color: var(--text-muted); }
 
 .cm-live-preview-task-done-line { color: var(--text-muted); }
+.cm-live-preview-task-cancelled-line { color: var(--text-muted); }
+.cm-live-preview-task-cancelled-text { text-decoration: line-through; }
+.cm-live-preview-task-scheduled-line { color: var(--text-muted); }
+
+/* ── Live preview blockquotes ── */
+
+.cm-live-preview-blockquote {
+  font-style: italic;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+}
 
 /* ── Scrollbar styling ── */
+
+/* ── Backlinks panel ── */
+
+#backlinks-panel {
+  border-top: 1px solid var(--border);
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+
+#backlinks-panel.hidden {
+  display: none;
+}
+
+#backlinks-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#backlinks-header:hover {
+  color: var(--text-primary);
+}
+
+.backlinks-arrow {
+  font-size: 16px;
+  transition: transform 0.15s ease;
+}
+
+#backlinks-panel.open .backlinks-arrow {
+  transform: rotate(90deg);
+}
+
+#backlinks-list {
+  display: none;
+  padding-bottom: 12px;
+}
+
+#backlinks-panel.open #backlinks-list {
+  display: block;
+}
+
+.backlink-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.backlink-item:hover {
+  background: var(--bg-hover);
+}
+
+.backlink-item i {
+  color: var(--text-muted);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* ── Autocomplete dropdown ── */
+
+.cm-tooltip-autocomplete {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden;
+}
+
+.cm-tooltip-autocomplete ul {
+  font-family: inherit !important;
+  font-size: 13px !important;
+}
+
+.cm-tooltip-autocomplete ul li {
+  padding: 4px 10px !important;
+  color: var(--text-primary) !important;
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected] {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.cm-tooltip-autocomplete .cm-completionDetail {
+  color: var(--text-muted) !important;
+  font-style: italic;
+  margin-left: 8px;
+}
+
+.cm-tooltip-autocomplete ul li[aria-selected] .cm-completionDetail {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+/* ── Scrollbar ── */
 
 ::-webkit-scrollbar {
   width: 6px;
