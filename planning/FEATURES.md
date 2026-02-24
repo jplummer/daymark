@@ -39,9 +39,11 @@ NotePlan stores notes as plain-text files (`.txt`, not `.md`). The storage locat
 The Setapp version uses CloudKit sync internally rather than iCloud Drive file-level sync. Both versions use the same file format and directory structure.
 
 **Plan:** Read/write NotePlan's files directly. This gives us:
-- Cross-machine sync via iCloud Drive with zero additional work.
+- Cross-machine sync via iCloud Drive with zero additional work (App Store version only — see caveat below).
 - Side-by-side use with NotePlan during development (same data, two UIs).
 - No sync engine to build or maintain.
+
+**Caveat — Setapp sync depends on NotePlan running:** The Setapp version syncs via CloudKit inside NotePlan's own process. Local files only update when NotePlan is running and pulls changes. If NotePlan hasn't been opened on a machine, Daymark reads stale data. The App Store version doesn't have this problem — iCloud Drive syncs at the OS level regardless of whether NotePlan is running. **Before Daymark can replace NotePlan**, we must support both storage locations and prefer the iCloud Drive path when available. During early development, the Setapp limitation is acceptable (just open NotePlan briefly to sync).
 
 **How iCloud Drive handles conflicts:** Last-writer-wins with conflict copies. If two machines edit the same file before sync completes, iCloud creates a duplicate (e.g. `filename 2.md`) rather than merging. This is the same behavior NotePlan already deals with — we don't make it worse.
 
