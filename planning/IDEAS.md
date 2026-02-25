@@ -22,9 +22,10 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 ### @Mentions
 
-- ⚠️ **@mention → note association** — Currently there's no way to associate an @mention with a specific note (e.g. link `@AngelicaBunyi` to `[[Angelica Bunyi, UX Designer]]`). If we could make this association, the reference pane becomes automatic. Explore how to establish and maintain this mapping. Prerequisite for the reference pane below.
-- ⚠️ **@mention reference pane** — When viewing a person's note (e.g. `[[Angelica Bunyi, UX Designer]]`), show an optional reference pane at the top listing all tasks across all notes that mention `@AngelicaBunyi`. Since notes are written reverse-chron (newest at top), this puts unhandled tasks close to where they're needed. Should include: one-click to navigate to the source, option to filter out done tasks, and ideally no need to manually copy synced lines. The goal: "show me everything I need to talk to this person about" in one place, zero gymnastics.
-- **Graceful mention deletion** — When an @mention is "deleted" (person leaves, becomes irrelevant), the text should degrade to plain text rather than being destroyed. Options: strip the `@` prefix, move to `@_old/` namespace, or just leave as-is but remove from the active mention index.
+Core @mention behavior (identity, click, autocomplete, sidebar, rename, delete) is specified in PLAN.md § Design Decisions: @Mentions. Remaining ideas:
+
+- ⚠️ **@mention → note association** — Associate an @mention with a specific note (e.g. link `@AngelicaBunyi` to `[[Angelica Bunyi, UX Designer]]`). If established, clicking the mention could navigate directly to the person's note instead of running a search. Options to explore: explicit `@mention:` line in the note, fuzzy name matching, or both. Prerequisite for the reference pane below.
+- ⚠️ **@mention reference pane** — When viewing a person's note, show a reference pane listing all tasks across all notes that mention that person. Done tasks filtered by default. One-click to navigate to the source. The goal: "show me everything I need to talk to this person about" in one place, zero gymnastics. Depends on the mention → note association above.
 
 ### Scheduling
 
@@ -71,6 +72,7 @@ Things we might want but aren't committed to. Some need significant investigatio
 - **Link to a specific section of a note** — `[[Note Title#Section]]` or similar. NotePlan may support this but it's unused. Explore later.
 - ⚠️ **Smarter note rename** — NotePlan keeps the old filename when you change a note's H1, then offers to update links. Could we rename the file too? Needs thought around backward compatibility.
 - ⚠️ **Smarter backlinks** — NotePlan's backlinks panel is noisy (piles of "prep for [[link]]" entries from daily notes). Explore ways to make backlinks more useful: grouping, filtering, collapsing routine references, surfacing only meaningful ones.
+- **Email addresses as mailto: links** — Well-qualified email addresses (e.g. `person@example.com`) should render as clickable `mailto:` links, similar to how bare URLs become clickable links. Low priority.
 
 ---
 

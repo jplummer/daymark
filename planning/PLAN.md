@@ -238,13 +238,91 @@ Inspected existing NotePlan files to determine on-disk format:
 
 **Open:** Non-task synced lines — confirmed that synced lines work on any line (not just tasks). Same `^blockid` mechanism, same blue asterisk in UI.
 
+## Design Decisions: @Mentions
+
+Discussed and decided 2026-02-24. #Hashtags will follow the same patterns; @mentions are the priority because they're heavily used.
+
+### Identity
+
+- **Character set:** `@` followed by a letter, then letters, digits, `_`, `/`, `-`. Regex: `@[A-Za-z][A-Za-z0-9_/\-]*`. The `/` allows folder-like prefixes (e.g. `@_old/PersonName`, `@work/PersonName`).
+- **Word boundary:** Mentions only start at word boundaries. `email@PersonName` is not a mention. Trailing punctuation (`.`, `,`, `:`, etc.) ends the mention — `@PersonName.` parses as mention `@PersonName` + period.
+- **Case:** Case-insensitive matching, case-preserving display. `@angelicabunyi` and `@AngelicaBunyi` resolve to the same mention. Most-frequent form is canonical.
+- **No disallowed names:** Any single letter or longer token is valid (`@A`, `@Office`, `@AngelicaBunyi`). `@` alone (nothing following) is not a mention.
+- **Name collisions:** Deferred. Manual disambiguation (e.g. `@JohnSmithMarketing`) if needed.
+
+### On disk
+
+Plain text `@PersonName`. No special syntax beyond the `@` prefix. Unchanged from NotePlan.
+
+### V1 behavior: click = search
+
+- **Left-click** an @mention anywhere → search in the main window for all lines containing that mention. Done tasks filtered out by default, with a toggle to include them.
+- Clicking in a secondary window also searches in the main window.
+- When search occurs, the sidebar @mentions section opens and the target mention is selected.
+- **Future exploration:** Associate an @mention with a specific note (e.g. link `@AngelicaBunyi` to `[[Angelica Bunyi, UX Designer]]`) so clicking navigates directly to the person's note with a reference pane. Current workflow: user opens the person's note manually, clicks the @mention written at the top of that note to search, sweeps over results to prep for 1:1s. The association would automate this. V1 uses search; association layers on later. See IDEAS.md § @Mentions for exploration notes.
+
+### Context menu (right-click)
+
+- Search for @MentionName (same as left-click, explicit)
+- Search for @MentionName in new window
+- Copy mention
+- Remove @ from this line (degrades this one occurrence to plain text)
+- Plus line-level actions (task actions, synced line actions, etc.) — designed separately
+
+### Autocomplete
+
+- Typing `@` triggers autocomplete dropdown.
+- Ranked by frequency (mentions appearing in more active notes rank higher), then alphabetical.
+- `@_old/` and other `_`-prefixed mentions rank last but still included.
+- Selecting inserts the full `@MentionName`.
+- No match = no dropdown. New mentions are created implicitly by typing them; they enter the index on save.
+
+### Editor formatting
+
+- Styled with a subtle background tint and distinct color (reference: NotePlan theme uses `#d87001` with ~12% opacity background).
+- The `@` stays visible — it's part of the readable text, not hidden like `[[` brackets.
+- Fine-tuning deferred to a styling pass.
+
+### Sidebar: mentions list
+
+- Collapsible section in the left sidebar showing all known mentions.
+- Grouped by folder prefix (`@_old/`, `@work/`, etc.). Unprefixed mentions at top. Each group collapsible. `_`-prefixed groups auto-dimmed as inactive.
+- Clicking a mention in the sidebar = same as clicking in a note (search in main window, mention selected).
+- Reference count shown per mention.
+
+### Rename (global)
+
+- Initiated from the sidebar (not from right-click context menu in the editor).
+- Changes `@OldName` to `@NewName` across every file containing it.
+- Confirmation dialog showing affected file count before executing.
+- Empty name not allowed — the rename field rejects it.
+
+### Delete (non-destructive)
+
+- Initiated from the sidebar.
+- Strips the `@` prefix from all occurrences, preserving the text. `@SeanStorlie` → `SeanStorlie` everywhere.
+- Confirmation: "This will remove @ from N occurrences across M files. The text will be preserved."
+- The mention disappears from the sidebar. **Hard rule: deletion never destroys text content.**
+
+### Stale/orphan mentions
+
+- A mention appearing only in archived/trashed files auto-disappears from the sidebar.
+- Still findable via search.
+
+### Discovery/indexing
+
+- Scan-derived from all files. No separate registry.
+- Performance monitored — incremental indexing or caching added if scanning becomes slow.
+- **Implementation note:** The current regex in `note-index.ts` uses `\w+` which doesn't match `/` or `-`. Update to `[A-Za-z][A-Za-z0-9_/\-]*` when implementing.
+
+---
+
 ## Open Questions
 
 - **Task state syntax:** Open tasks are usually just `- text` (no brackets), but `- [ ] text` also exists in some older notes. Both forms must be treated as open tasks. Brackets appear consistently for done `[x]`, cancelled `[-]`, and scheduled `[>]`. More states may exist.
 - **Template format:** How does NotePlan store and apply templates? Inspect `Notes/@Templates/`.
 - **Scheduling compatibility:** We must match NotePlan's on-disk format for scheduled tasks so both apps can coexist. NotePlan docs describe intended behavior; real notes reveal actual behavior. When they diverge, match what's in the files.
 - **Calendar grid vs. `>today`:** Tasks scheduled with `>today` should only show as open on today's date and the originating date in the compact calendar — NOT on every intervening day. Document this constraint when implementing the calendar.
-- **@mention task sync:** There may be value in helping sync or surface tasks across `@mentions` (e.g. see all open tasks tagged with `@PersonName`). Discuss later.
 - **iCloud Drive vs Setapp container:** The Setapp version stores files in a sandboxed container and syncs via CloudKit *inside NotePlan's process*. This means the local files only update when NotePlan is running — if NotePlan hasn't been opened, Daymark reads stale data. The App Store / direct-download version uses `~/Library/Mobile Documents/iCloud~co~noteplan~NotePlan3/Documents/`, which syncs at the OS level via iCloud Drive (no dependency on NotePlan running). **Current status:** developing against the Setapp path, which requires NotePlan to have synced recently. **Required before replacing NotePlan:** detect and support both storage locations; prefer the iCloud Drive path when available since it syncs independently.
 - **Native file watching not working:** Tauri v2's `watch()` from `@tauri-apps/plugin-fs` didn't fire events for files in the NotePlan Setapp container (`~/Library/Containers/co.noteplan.NotePlan-setapp/...`). Tried both `baseDir: Home` with relative paths and absolute paths via `homeDir()`. No errors thrown, just no events. Currently using polling (readTextFile every 2s, readDir every 5s) as a reliable fallback. Root cause unknown — could be macOS sandbox restrictions on FSEvents for other apps' containers, path resolution issues, or a Tauri plugin bug. Worth revisiting if polling becomes a performance concern.
 
