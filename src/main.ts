@@ -523,8 +523,10 @@ function updateBacklinksPanel(relPath: string) {
   if (backlinks.length === 0) {
     title.textContent = 'No backlinks';
     panel.classList.remove('open');
+    panel.classList.add('no-backlinks');
   } else {
     title.textContent = `Backlinks (${backlinks.length})`;
+    panel.classList.remove('no-backlinks');
     for (const entry of backlinks) {
       const item = document.createElement('div');
       item.className = 'backlink-item';
@@ -683,7 +685,9 @@ function wireBacklinksPanel() {
   const panel = document.getElementById('backlinks-panel');
   if (header && panel) {
     header.addEventListener('click', () => {
-      panel.classList.toggle('open');
+      if (!panel.classList.contains('no-backlinks')) {
+        panel.classList.toggle('open');
+      }
     });
   }
 }

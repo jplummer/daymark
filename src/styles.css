@@ -583,13 +583,21 @@ html, body {
   letter-spacing: 0.5px;
 }
 
-#backlinks-header:hover {
+#backlinks-panel:not(.no-backlinks) #backlinks-header:hover {
   color: var(--text-primary);
 }
 
 .backlinks-arrow {
   font-size: 16px;
   transition: transform 0.15s ease;
+}
+
+#backlinks-panel.no-backlinks .backlinks-arrow {
+  display: none;
+}
+
+#backlinks-panel.no-backlinks #backlinks-header {
+  cursor: default;
 }
 
 #backlinks-panel.open .backlinks-arrow {
