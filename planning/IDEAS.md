@@ -6,8 +6,11 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 ### Editor & Rendering
 
-- ⚠️ **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support. (`syntaxTree` is already imported in `live-preview.ts` but unused — kept for this transition.)
-- **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better.
+- ⚠️ **Use CM6 syntax tree instead of regex for live preview** — Current prototype uses regex to find markdown syntax. CM6 has a proper Lezer parse tree via `syntaxTree(state)`. Switching to tree-walking will be more robust and handle edge cases. Do this before adding more syntax support.
+- **Autocomplete polish** — Icons in the wiki-link autocomplete dropdown (e.g. file icon for notes, folder icon for context). Visual divider between active and archived sections of the result list.
+- **Heading folding** — Fold/collapse text under headings. Standard editor feature for long notes.
+- **Left gutter controls** — The generous left padding area will house controls for line/block dragging, heading folding, and task scheduling. Nothing in the content area should protrude into this padding.
+- **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better. Note: numbered list indent should adjust to the widest number in the list.
 - **Make it clear what's an internal and external link** — markdown link for external, double bracket for internal. Visual distinction in the editor.
 - **Proportional fonts for body text** — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
 

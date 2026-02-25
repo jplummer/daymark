@@ -115,9 +115,10 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 - Clicking a link to a non-existent note creates a new note in the `Notes/` root.
 - Build the backlinks panel (given a note, show all notes that link to it).
 - Make `@mentions` and `#hashtags` clickable (navigate to search results).
+- Folder index view: clicking a folder in the sidebar shows a listing of its notes in the editor area (title, maybe first line preview). Same as NotePlan's folder view. Provides a browsable overview without opening individual notes.
 - Incrementally update the index when files change.
 
-**Done when:** You can click a `[[link]]` to navigate, see backlinks for any note, and click an `@mention` to see all notes containing it.
+**Done when:** You can click a `[[link]]` to navigate, see backlinks for any note, click an `@mention` to see all notes containing it, and click a folder to see its contents.
 
 ### Phase 4: Daily/weekly notes and calendar
 
@@ -162,6 +163,14 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 At this point Daymark should be a functional daily driver. Remaining Priority 1 features (templates with logic, stable links on move) can be tackled as needed. Priority 2 features (theming, timeline, filters, timeblocking, calendar integration) come after.
 
+#### Sidebar context menus
+
+Right-click context menus for the sidebar. Actions vary by target:
+
+- **Note:** Open in new window, Show in Finder, Copy link, Duplicate, Rename, Archive, Move to trash.
+- **Folder:** New subfolder, New note, Open in new window, Show in Finder, Copy link, Rename, Archive, Move to trash.
+- **Blank area (no target):** New folder, New note, Refresh.
+
 ---
 
 ## Discovered: NotePlan File Conventions
@@ -199,6 +208,7 @@ Inspected existing NotePlan files to determine on-disk format:
 - **Subtasks:** The entire indented block is scheduled. Each line (parent + children) gets `[>]` and `>date` on source, `[ ]` and `<date` on destination.
 - **After completion (non-synced):** Destination becomes `[x]`, but source appears to stay `[>]` in the file. See synced lines section for synced behavior.
 - **Auto-task creation:** Typing `- ` (hyphen space) creates an open task. On disk this stays as `- ` (no brackets) — NotePlan renders the checkbox in the UI. `* ` (asterisk space) remains a plain markdown bullet, not a task.
+- **Tab indentation:** Any content (tasks, bullets, plain text, headings) can be indented with Tab and outdented with Shift+Tab. NotePlan uses tabs on disk. Indentation is structural — it creates subtasks, nested bullets, and block hierarchy.
 - **`>today` on disk:** Persists literally as `>today` — NOT resolved to a date. This is the key difference from `>YYYY-MM-DD`. Only `>today` tasks roll forward; `>YYYY-MM-DD` tasks are pinned to a specific date.
 - **`>today` carry-forward scope:** Only explicitly `>today`-tagged tasks carry forward. Tasks with a specific `>YYYY-MM-DD` whose date has passed do NOT auto-carry — they stay pinned to their target date and are surfaced as stale via the compact calendar.
 - **Convenience menu:** Typing `>` in NotePlan offers: `>today` (repeat until completed), `>YYYY-MM-DD` (today's date), `>YYYY-Wnn` (current week), `>YYYY-Qn` (current quarter). Weekly and quarterly scheduling exist — document format when ready to implement.

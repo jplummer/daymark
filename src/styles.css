@@ -24,12 +24,14 @@
   --link: #BF1B1B;
   --green: #4a8c3f;
   --red: #ED3F1C;
-  --syntax-fade: #35000000;
+  --syntax-fade: #b0b0b0;
   --scrollbar: #c0c0c0;
   --scrollbar-hover: #a0a0a0;
+  --bullet: #736B1E;
   --resize-handle: #BF1B1B;
 }
 
+/* Dark mode – disabled while palette is being refined
 @media (prefers-color-scheme: dark) {
   :root {
     --bg-primary: #1a1a1a;
@@ -55,6 +57,7 @@
     --resize-handle: #FF4D4D;
   }
 }
+*/
 
 html, body {
   height: 100%;
@@ -367,7 +370,7 @@ html, body {
 }
 
 .cm-editor .cm-activeLine {
-  background: var(--bg-secondary);
+  background: #fafafc;
 }
 
 .cm-editor .cm-cursor {
@@ -410,8 +413,9 @@ html, body {
 
 /* ── Faded syntax markers — visible on cursor line at low opacity ── */
 
-.cm-live-preview-syntax-fade {
-  color: var(--syntax-fade);
+.cm-live-preview-syntax-fade,
+.cm-live-preview-syntax-fade span {
+  color: var(--syntax-fade) !important;
 }
 
 /* ── Live preview inline styles ── */
@@ -438,6 +442,26 @@ html, body {
   text-decoration: underline !important;
 }
 
+/* ── @mentions and #hashtags ── */
+
+.cm-live-preview-mention {
+  color: var(--accent2) !important;
+  cursor: pointer;
+}
+
+.cm-live-preview-mention:hover {
+  text-decoration: underline !important;
+}
+
+.cm-live-preview-hashtag {
+  color: var(--green) !important;
+  cursor: pointer;
+}
+
+.cm-live-preview-hashtag:hover {
+  text-decoration: underline !important;
+}
+
 /* ── Live preview external link styles ── */
 
 .cm-live-preview-extlink,
@@ -459,12 +483,30 @@ html, body {
 
 /* ── Live preview task icon widgets ── */
 
+/* List lines: padding pushes all content (including wraps) right.
+   Widget negative margin pulls the marker back to the left boundary. */
+.cm-line.cm-live-preview-list-line {
+  padding-left: 1.3em;
+}
+
 .cm-live-preview-task {
+  display: inline-block;
+  width: 1.3em;
+  margin-left: -1.3em;
   cursor: pointer;
 }
 .cm-live-preview-task i {
   font-size: 1.1em;
   vertical-align: -0.05em;
+}
+
+.cm-live-preview-bullet {
+  display: inline-block;
+  width: 1.3em;
+  margin-left: -1.3em;
+  font-size: 1.1em;
+  text-align: center;
+  color: var(--bullet);
 }
 .cm-live-preview-task.open { color: var(--red); }
 .cm-live-preview-task.done { color: var(--text-muted); }
@@ -481,9 +523,15 @@ html, body {
 .cm-live-preview-blockquote {
   font-style: italic;
   color: var(--text-secondary);
-  border-left: 3px solid var(--border);
-  padding-left: 12px;
+  padding-left: calc(1.3em + 2px);
+  background: linear-gradient(var(--border), var(--border)) no-repeat calc(1.3em - 3px) 0 / 3px 100%;
 }
+
+/* ── Tab-indented paragraphs ── */
+
+.cm-line.cm-live-preview-indent-1 { margin-left: 2em; }
+.cm-line.cm-live-preview-indent-2 { margin-left: 4em; }
+.cm-line.cm-live-preview-indent-3 { margin-left: 6em; }
 
 /* ── Scrollbar styling ── */
 
@@ -554,6 +602,12 @@ html, body {
   color: var(--text-muted);
   font-size: 14px;
   flex-shrink: 0;
+}
+
+.backlink-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 8px;
 }
 
 /* ── Autocomplete dropdown ── */

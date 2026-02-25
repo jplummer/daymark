@@ -1,19 +1,23 @@
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, KeyBinding } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import {
   syntaxHighlighting,
   defaultHighlightStyle,
   indentOnInput,
+  indentUnit,
   bracketMatching,
 } from '@codemirror/language';
 import { readTextFile, writeTextFile, readDir, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { autocompletion } from '@codemirror/autocomplete';
 import { livePreview } from './live-preview';
 import { initSidebar, setActiveTreeItem, refreshSidebar, TreeNode } from './sidebar';
+import { noteIndex } from './note-index';
+import { wikiLinkCompletion } from './completions';
 import 'remixicon/fonts/remixicon.css';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
@@ -188,6 +192,7 @@ function scheduleSave() {
       await writeTextFile(currentNote.relPath, content, { baseDir: BaseDirectory.Home });
       lastSavedContent = content;
       isDirty = false;
+      noteIndex.updateEntry(currentNote.relPath, content);
       setStatus('Saved');
       setTimeout(() => setStatus(''), 1500);
     } catch (err) {
@@ -267,18 +272,61 @@ const linkClickHandler = EditorView.domEventHandlers({
     const target = event.target as HTMLElement;
     if (!target) return false;
 
-    const isLink = target.closest('.cm-live-preview-extlink, .cm-live-preview-extlink-arrow');
-    if (!isLink) return false;
-
-    const href = findLinkHref(isLink as HTMLElement);
-    if (href) {
-      event.preventDefault();
-      openUrl(href).catch((err) => console.error('[daymark] Failed to open URL:', err));
-      return true;
+    // External links
+    const isExtLink = target.closest('.cm-live-preview-extlink, .cm-live-preview-extlink-arrow');
+    if (isExtLink) {
+      const href = findLinkHref(isExtLink as HTMLElement);
+      if (href) {
+        event.preventDefault();
+        openUrl(href).catch((err) => console.error('[daymark] Failed to open URL:', err));
+        return true;
+      }
+      return false;
     }
+
+    // Wiki-links
+    const isWikiLink = target.closest('.cm-live-preview-wikilink') as HTMLElement | null;
+    if (isWikiLink) {
+      const linkTarget = isWikiLink.dataset.link;
+      if (linkTarget) {
+        event.preventDefault();
+        navigateToWikiLink(linkTarget);
+        return true;
+      }
+      return false;
+    }
+
     return false;
   },
 });
+
+async function navigateToWikiLink(title: string) {
+  const entry = noteIndex.resolveLink(title);
+  if (entry) {
+    navigateTo({
+      type: 'project',
+      relPath: entry.relPath,
+      displayName: entry.title,
+    });
+  } else {
+    // Create new note in Notes/ root
+    const newPath = noteIndex.newNotePath(title);
+    const content = `# ${title}\n`;
+    try {
+      await writeTextFile(newPath, content, { baseDir: BaseDirectory.Home });
+      navigateTo({
+        type: 'project',
+        relPath: newPath,
+        displayName: title,
+      });
+      noteIndex.addEntry(newPath, `${title}.txt`, content);
+      refreshSidebar();
+    } catch (err) {
+      console.error('[daymark] Failed to create note:', err);
+      setStatus(`Failed to create note: ${err}`);
+    }
+  }
+}
 
 // --- Paste URL → auto-fetch title ---
 
@@ -344,9 +392,10 @@ const pasteUrlHandler = EditorView.domEventHandlers({
 const editorExtensions = [
   highlightActiveLine(),
   indentOnInput(),
+  indentUnit.of('\t'),
   bracketMatching(),
   history(),
-  keymap.of([...navKeymap, ...defaultKeymap, ...historyKeymap]),
+  keymap.of([...navKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   EditorView.updateListener.of((update) => {
@@ -356,6 +405,10 @@ const editorExtensions = [
     }
   }),
   EditorView.lineWrapping,
+  autocompletion({
+    override: [wikiLinkCompletion],
+    activateOnTyping: true,
+  }),
   livePreview,
   linkClickHandler,
   pasteUrlHandler,
@@ -413,6 +466,7 @@ async function pollNotesDirectory() {
       const snapshot = await getDirSnapshot();
       if (snapshot !== lastDirSnapshot) {
         lastDirSnapshot = snapshot;
+        await noteIndex.build();
         refreshSidebar();
       }
     } catch {
@@ -451,8 +505,50 @@ async function navigateTo(note: NoteLocation, addToHistory = true) {
   }
 
   pollCurrentNote(note.relPath);
+  updateBacklinksPanel(note.relPath);
   setStatus('');
   view.focus();
+}
+
+function updateBacklinksPanel(relPath: string) {
+  const panel = document.getElementById('backlinks-panel');
+  const list = document.getElementById('backlinks-list');
+  const title = document.getElementById('backlinks-title');
+  if (!panel || !list || !title) return;
+
+  const backlinks = noteIndex.getBacklinks(relPath);
+
+  list.textContent = '';
+
+  if (backlinks.length === 0) {
+    title.textContent = 'No backlinks';
+    panel.classList.remove('open');
+  } else {
+    title.textContent = `Backlinks (${backlinks.length})`;
+    for (const entry of backlinks) {
+      const item = document.createElement('div');
+      item.className = 'backlink-item';
+
+      const icon = document.createElement('i');
+      icon.className = 'ri-link';
+
+      const label = document.createElement('span');
+      label.textContent = entry.title;
+
+      item.appendChild(icon);
+      item.appendChild(label);
+      item.addEventListener('click', () => {
+        navigateTo({
+          type: 'project',
+          relPath: entry.relPath,
+          displayName: entry.title,
+        });
+      });
+      list.appendChild(item);
+    }
+  }
+
+  panel.classList.remove('hidden');
 }
 
 function dailyNote(date: Date): NoteLocation {
@@ -582,16 +678,35 @@ function wireNavButtons() {
   });
 }
 
+function wireBacklinksPanel() {
+  const header = document.getElementById('backlinks-header');
+  const panel = document.getElementById('backlinks-panel');
+  if (header && panel) {
+    header.addEventListener('click', () => {
+      panel.classList.toggle('open');
+    });
+  }
+}
+
 async function init() {
   wireNavButtons();
   wireResizeHandle();
+  wireBacklinksPanel();
 
   const sidebarReady = initSidebar((node: TreeNode) => {
     navigateTo(projectNote(node));
   });
 
+  // Build note index in parallel with first navigation
+  const indexReady = noteIndex.build();
+
   await navigateTo(dailyNote(new Date()));
   await sidebarReady;
+  await indexReady;
+
+  // Re-render backlinks now that index is ready (initial navigateTo ran before index finished)
+  if (currentNote) updateBacklinksPanel(currentNote.relPath);
+
   pollNotesDirectory();
 }
 

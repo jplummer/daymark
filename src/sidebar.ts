@@ -17,7 +17,7 @@ async function extractTitle(relPath: string, filename: string): Promise<string> 
   try {
     const text = await readTextFile(relPath, { baseDir: BaseDirectory.Home });
     const firstLines = text.slice(0, 500);
-    const match = firstLines.match(/^#\s+(.+)$/m);
+    const match = firstLines.match(/^\s*#\s+(.+)$/m);
     if (match) return match[1].trim();
   } catch {
     // File unreadable
@@ -82,16 +82,23 @@ function renderTree(
     if (node.isDir) {
       const folder = document.createElement('div');
       folder.className = 'tree-folder';
+      folder.dataset.folderPath = node.relPath;
 
       const item = document.createElement('div');
       item.className = 'tree-item';
       item.style.paddingLeft = `${indent}px`;
 
+      const isOpen = openFolders.has(node.relPath);
+
       const arrow = document.createElement('i');
-      arrow.className = 'ri-arrow-right-s-line tree-item-arrow';
+      arrow.className = isOpen
+        ? 'ri-arrow-down-s-line tree-item-arrow'
+        : 'ri-arrow-right-s-line tree-item-arrow';
 
       const icon = document.createElement('i');
-      icon.className = 'ri-folder-line tree-item-icon';
+      icon.className = isOpen
+        ? 'ri-folder-open-line tree-item-icon'
+        : 'ri-folder-line tree-item-icon';
 
       const label = document.createElement('span');
       label.className = 'tree-item-label';
@@ -102,14 +109,19 @@ function renderTree(
       item.appendChild(label);
 
       const childContainer = document.createElement('div');
-      childContainer.className = 'tree-folder-children';
+      childContainer.className = `tree-folder-children${isOpen ? ' open' : ''}`;
 
       item.addEventListener('click', () => {
-        const isOpen = childContainer.classList.toggle('open');
-        arrow.className = isOpen
+        const nowOpen = childContainer.classList.toggle('open');
+        if (nowOpen) {
+          openFolders.add(node.relPath);
+        } else {
+          openFolders.delete(node.relPath);
+        }
+        arrow.className = nowOpen
           ? 'ri-arrow-down-s-line tree-item-arrow'
           : 'ri-arrow-right-s-line tree-item-arrow';
-        icon.className = isOpen
+        icon.className = nowOpen
           ? 'ri-folder-open-line tree-item-icon'
           : 'ri-folder-line tree-item-icon';
       });
@@ -158,9 +170,13 @@ function renderSpecialFolders(
     item.className = 'tree-item special-folder';
     item.style.paddingLeft = '12px';
 
+    const isOpen = openFolders.has(node.relPath);
+
     const iconClass = SPECIAL_FOLDER_ICONS[node.name] || 'ri-folder-line';
     const arrow = document.createElement('i');
-    arrow.className = 'ri-arrow-right-s-line tree-item-arrow';
+    arrow.className = isOpen
+      ? 'ri-arrow-down-s-line tree-item-arrow'
+      : 'ri-arrow-right-s-line tree-item-arrow';
 
     const icon = document.createElement('i');
     icon.className = `${iconClass} tree-item-icon`;
@@ -174,17 +190,23 @@ function renderSpecialFolders(
     item.appendChild(label);
 
     const childContainer = document.createElement('div');
-    childContainer.className = 'tree-folder-children';
+    childContainer.className = `tree-folder-children${isOpen ? ' open' : ''}`;
 
     item.addEventListener('click', () => {
-      const isOpen = childContainer.classList.toggle('open');
-      arrow.className = isOpen
+      const nowOpen = childContainer.classList.toggle('open');
+      if (nowOpen) {
+        openFolders.add(node.relPath);
+      } else {
+        openFolders.delete(node.relPath);
+      }
+      arrow.className = nowOpen
         ? 'ri-arrow-down-s-line tree-item-arrow'
         : 'ri-arrow-right-s-line tree-item-arrow';
     });
 
     const wrapper = document.createElement('div');
     wrapper.className = 'tree-folder';
+    wrapper.dataset.folderPath = node.relPath;
     wrapper.appendChild(item);
     wrapper.appendChild(childContainer);
     container.appendChild(wrapper);
@@ -204,8 +226,9 @@ export function setActiveTreeItem(relPath: string): void {
   if (item) item.classList.add('active');
 }
 
-// Stored so refreshSidebar can reuse it
+// Persistent state across refreshes
 let sidebarNavigateCallback: ((node: TreeNode) => void) | null = null;
+const openFolders = new Set<string>();
 
 async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
   const treeContainer = document.getElementById('sidebar-tree');
@@ -261,9 +284,15 @@ export async function initSidebar(onNavigate: (node: TreeNode) => void): Promise
 
 export async function refreshSidebar(): Promise<void> {
   if (!sidebarNavigateCallback) return;
+
+  const sidebar = document.getElementById('sidebar');
+  const scrollTop = sidebar?.scrollTop ?? 0;
+
   try {
     await buildSidebar(sidebarNavigateCallback);
   } catch (err) {
     console.error('[daymark] Failed to refresh sidebar:', err);
   }
+
+  if (sidebar) sidebar.scrollTop = scrollTop;
 }

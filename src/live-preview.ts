@@ -53,13 +53,24 @@ class TaskWidget extends WidgetType {
     const span = document.createElement('span');
     const { icon, cls } = taskIcons[this.taskState];
     span.className = `cm-live-preview-task ${cls}`;
-    span.innerHTML = `<i class="${icon}"></i> `;
+    span.innerHTML = `<i class="${icon}"></i>`;
     return span;
   }
 
   eq(other: TaskWidget) {
     return this.taskState === other.taskState;
   }
+}
+
+class BulletWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-live-preview-bullet';
+    span.textContent = '•';
+    return span;
+  }
+
+  eq() { return true; }
 }
 
 class LinkArrowWidget extends WidgetType {
@@ -95,6 +106,12 @@ const doneTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-done-lin
 const cancelledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-cancelled-line' });
 const cancelledTextMark = Decoration.mark({ class: 'cm-live-preview-task-cancelled-text' });
 const scheduledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-scheduled-line' });
+const listLineDeco = Decoration.line({ class: 'cm-live-preview-list-line' });
+
+const indentLineDecos: Record<number, Decoration> = {};
+for (let n = 1; n <= 3; n++) {
+  indentLineDecos[n] = Decoration.line({ class: `cm-live-preview-indent-${n}` });
+}
 
 // --- Build decorations for a given state ---
 //
@@ -137,6 +154,21 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
         decorations.push(syntaxFade.range(line.from, markerEnd));
       } else {
         decorations.push(hidden.range(line.from, markerEnd));
+      }
+    }
+
+    // Tab-indented paragraphs: hide tabs and use CSS padding for consistent
+    // wrap indent. Only for lines that aren't headings, blockquotes, or lists.
+    if (!headingMatch && !quoteMatch) {
+      const tabMatch = text.match(/^(\t+)/);
+      if (tabMatch) {
+        const tabCount = Math.min(tabMatch[1].length, 3);
+        const tabEnd = line.from + tabMatch[1].length;
+        const inTabPrefix = onCursorLine && cursorIn(line.from, tabEnd);
+        if (!inTabPrefix) {
+          decorations.push(hidden.range(line.from, tabEnd));
+          decorations.push(indentLineDecos[tabCount].range(line.from));
+        }
       }
     }
 
@@ -276,8 +308,8 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       }
     }
 
-    // Tasks: `- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `
-    // Replace the entire task prefix (indent + marker) with an icon widget
+    // Tasks and bullets: `- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `, `* `
+    // Replace the prefix with an icon/bullet widget
     const taskMatch = text.match(/^(\s*)(- \[([x\->  ])\] |(\*) |(-) )/);
     if (taskMatch) {
       const indent = taskMatch[1].length;
@@ -286,12 +318,16 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       const prefixEnd = prefixStart + prefix.length;
 
       let taskState: TaskState | null = null;
+      let isBullet = false;
+
       if (taskMatch[3] !== undefined) {
         const marker = taskMatch[3];
         if (marker === 'x') taskState = 'done';
         else if (marker === '-') taskState = 'cancelled';
         else if (marker === '>') taskState = 'scheduled';
         else taskState = 'open';
+      } else if (taskMatch[4]) {
+        isBullet = true;
       } else if (taskMatch[5]) {
         // `- ` alone is an open task, unless followed by short bracket syntax
         // like `[]`, `[x]`, `[ ]` — that's a checkbox being edited mid-keystroke
@@ -300,7 +336,9 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
           taskState = 'open';
         }
       }
-      // `* ` (taskMatch[4]) is a plain bullet, not a task — skip
+
+      // Hanging indent for all list lines
+      decorations.push(listLineDeco.range(line.from));
 
       if (taskState === 'done') {
         decorations.push(doneTaskLineDeco.range(line.from));
@@ -313,10 +351,15 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
         decorations.push(scheduledTaskLineDeco.range(line.from));
       }
 
-      // Icon widget is inline-scoped
-      if (taskState && !(onCursorLine && cursorIn(prefixStart, prefixEnd))) {
-        const widget = new TaskWidget(taskState);
-        decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+      // Widget is inline-scoped: show raw markdown when cursor is in the prefix
+      if (!(onCursorLine && cursorIn(prefixStart, prefixEnd))) {
+        if (taskState) {
+          const widget = new TaskWidget(taskState);
+          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+        } else if (isBullet) {
+          const widget = new BulletWidget();
+          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+        }
       }
     }
 
