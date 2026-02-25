@@ -11,6 +11,10 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 - **Heading folding** — Fold/collapse text under headings. Standard editor feature for long notes.
 - **Left gutter controls** — The generous left padding area will house controls for line/block dragging, heading folding, and task scheduling. Nothing in the content area should protrude into this padding.
 - **Better numbered lists** — NotePlan handles numbered/ordered lists poorly. Opportunity to do better. Note: numbered list indent should adjust to the widest number in the list.
+- **Format menu** `[Phase 3]` — Top bar icon that launches a menu for inserting or applying content types. Everything in the menu should also be typable directly in markdown. Full content type inventory:
+    - Already rendering (Phase 1): headings 1–6, bold, italic, strikethrough, inline code, task, bullet point, URL.
+    - Need rendering + input support `[Phase 3]`: table, code block, quote, horizontal rule, note link, checklist item, `!`/`!!`/`!!!` priority markers.
+    - Need file handling `[Beyond Phase 6]`: add image, add file attachment.
 - **Make it clear what's an internal and external link** — markdown link for external, double bracket for internal. Visual distinction in the editor.
 - **Proportional fonts for body text** — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
 
@@ -34,6 +38,12 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 
 ### App Chrome
 
+- ⚠️ **Top bar layout** `[Phase 3]` — Design the top bar arrangement before building menus. Decisions needed: where date or path+title goes, where back/forward actions go, where format menu / note actions / share icons go, where date navigation goes on calendar notes. Prerequisite for the menu items below.
+- **Note actions menu** `[Phase 3]` `[Phase 5]` — Top bar icon that launches note-level actions:
+    - Initial set `[Phase 3]`: Open in new window, Keep window on top, Show note in Finder, Show note in sidebar.
+    - Task-dependent actions `[Phase 5]`: Move all open tasks, Move completed tasks to bottom.
+    - Later `[Beyond Phase 6]`: View revisions.
+- **Share menu** `[Beyond Phase 6]` — Top bar icon for sharing a note. Contents TBD.
 - Eventually we will need a **settings panel** for
     - syntax highlighting options
     - colors and styling

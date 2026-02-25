@@ -120,6 +120,8 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Done when:** You can click a `[[link]]` to navigate, see backlinks for any note, click an `@mention` to see all notes containing it, and click a folder to see its contents.
 
+**IDEAS.md pick-up:** Top bar layout design (§ App Chrome) — resolve before building menus. Format menu & content type rendering (§ Editor & Rendering). Note actions menu — initial set (§ App Chrome).
+
 ### Phase 4: Daily/weekly notes and calendar
 
 **Goal:** The daily-driver workflow — open today's note, see the compact calendar, get uncompleted weekly items surfaced.
@@ -149,6 +151,8 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears at the top of the Feb 25 daily note. You can carry a stale task forward with `>today`. Editing a synced line in the daily note updates the source, and vice versa.
 
+**IDEAS.md pick-up:** Note actions menu — task-dependent actions: Move all open tasks, Move completed tasks to bottom (§ App Chrome).
+
 ### Phase 6: Search and mention management
 
 **Goal:** Find anything quickly. Rename mentions globally.
@@ -162,6 +166,8 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 ### Beyond Phase 6
 
 At this point Daymark should be a functional daily driver. Remaining Priority 1 features (templates with logic, stable links on move) can be tackled as needed. Priority 2 features (theming, timeline, filters, timeblocking, calendar integration) come after.
+
+**IDEAS.md pick-up:** Format menu — image and file attachment support (§ Editor & Rendering). Note actions menu — View revisions. Share menu (§ App Chrome).
 
 #### Sidebar context menus
 
