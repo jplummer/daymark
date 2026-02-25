@@ -343,14 +343,14 @@ html, body {
 
 .cm-editor {
   height: 100%;
-  font-size: 15px;
+  font-size: 16px;
   background: var(--bg-primary);
 }
 
 .cm-editor .cm-scroller {
   padding: 16px 24px;
   font-family: 'SF Pro', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
-  line-height: 1.6;
+  line-height: 1.4;
 }
 
 .cm-editor .cm-content {
@@ -379,6 +379,11 @@ html, body {
 
 .cm-editor .cm-content ::selection {
   background: var(--selection);
+}
+
+/* ── Line spacing — bottom margin for block feel on wrapped lines ── */
+.cm-editor .cm-line {
+  margin-bottom: 8px;
 }
 
 /* ── Live preview heading styles — New York serif, gold ── */
@@ -483,16 +488,21 @@ html, body {
 
 /* ── Live preview task icon widgets ── */
 
-/* List lines: padding pushes all content (including wraps) right.
-   Widget negative margin pulls the marker back to the left boundary. */
+/* List lines: padding pushes text (including wraps) right.
+   Widgets use position:relative to shift visually into the padding area,
+   and margin-right:-width to take zero flow space so text starts at padding.
+   The 6px accounts for CM6's default .cm-line left padding so the widget
+   lands at exactly the same position as heading/body text. */
 .cm-line.cm-live-preview-list-line {
-  padding-left: 1.3em;
+  padding-left: calc(1.3em + 6px);
 }
 
 .cm-live-preview-task {
   display: inline-block;
   width: 1.3em;
-  margin-left: -1.3em;
+  position: relative;
+  left: -1.3em;
+  margin-right: -1.3em;
   cursor: pointer;
 }
 .cm-live-preview-task i {
@@ -503,7 +513,9 @@ html, body {
 .cm-live-preview-bullet {
   display: inline-block;
   width: 1.3em;
-  margin-left: -1.3em;
+  position: relative;
+  left: -1.3em;
+  margin-right: -1.3em;
   font-size: 1.1em;
   text-align: center;
   color: var(--bullet);
@@ -523,8 +535,18 @@ html, body {
 .cm-live-preview-blockquote {
   font-style: italic;
   color: var(--text-secondary);
-  padding-left: calc(1.3em + 2px);
-  background: linear-gradient(var(--border), var(--border)) no-repeat calc(1.3em - 3px) 0 / 3px 100%;
+  padding-left: calc(1.3em + 6px) !important;
+  position: relative;
+}
+.cm-live-preview-blockquote::before {
+  content: '';
+  position: absolute;
+  left: calc(1.3em - 3px);
+  top: 3px;
+  bottom: 3px;
+  width: 4px;
+  background: #c7c4a5;
+  border-radius: 2px;
 }
 
 /* ── Tab-indented paragraphs ── */
