@@ -19,7 +19,7 @@ These features define the app. Ship nothing without them.
 - **Click task icon to toggle** — Left-clicking a task icon toggles between done and open (reopen a completed task, or mark an open task done). The most frequent task interaction, so it should be one click.
 - **Task context menu** — Right-click a task icon to schedule it, complete it, open (reopen) it, or cancel it. Includes a date picker and shortcuts like `>today`, tomorrow's date, etc. A discoverable alternative to memorizing syntax.
 - **Drag to reorder** — Drag tasks, lines, or selections to reposition them within a note.
-- **Auto-task creation** — Typing `- ` (hyphen space) at the start of a line automatically converts to `- [ ] ` (open task). `* ` (asterisk space) remains a plain markdown bullet.
+- **Auto-task creation** — Typing `- ` (hyphen space) at the start of a line automatically converts to `- [ ] ` (open task). `* ` (asterisk space) remains a plain markdown bullet. `+ ` (plus space) is a checklist item — visually identical to a task but not subject to carry-forward or "incomplete task" warnings. Useful for shopping lists, packing lists, etc. where unfinished items don't imply missed work.
 - **Links & backlinks** — `[[wiki-links]]` that resolve by title; backlink panel showing inbound references.
 - **Stable links on move** — Moving a note into a folder must not break links to/from it.
 - **@mentions** — `@FirstnameLastname` tags in any note. Clickable (navigates to search results or reference pane). Primary use: tagging tasks with the person they involve, e.g. `- Ask @AngelicaBunyi about X`. Finding all open tasks mentioning a person is a core daily-driver workflow for meeting prep.

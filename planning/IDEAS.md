@@ -17,6 +17,11 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
     - Already rendering (Phase 1): headings 1–6, bold, italic, strikethrough, inline code, task, bullet point, URL.
     - Need rendering + input support: table, code block, quote, horizontal rule, note link, checklist item, `!`/`!!`/`!!!` priority markers.
     - Need file handling: add image, add file attachment.
+- **Checklist items (`+ ` / `+ [ ]`)** `[Phase 5]` — A secondary task type using `+` as the list marker. Renders identically to tasks for now (stubbed in live-preview and note-index), but will eventually differ: checklist items are not subject to carry-forward, scheduling warnings, or "incomplete task" nagging. Good for shopping lists, packing lists, meeting agendas — anything where unchecked items don't imply missed work. Full list marker conventions:
+    - `* ` — bullet (plain list item)
+    - `- ` — shortcut for open task (`- [ ] `)
+    - `+ ` — shortcut for checklist item (`+ [ ] `)
+    - `* [ ]` — unassigned, leave alone for now
 - **Proportional fonts for body text** `[Phase 3b]` — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
 
 ### @Mentions
