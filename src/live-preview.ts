@@ -116,10 +116,16 @@ for (let n = 1; n <= 3; n++) {
 
 // --- Build decorations from syntax tree (when available) ---
 
+interface ListLineInfo {
+  listMark: { from: number; to: number };
+  taskMarker?: { from: number; to: number };
+}
+
 function buildDecorationsFromTree(
   state: EditorState,
   cursorPos: number,
   decorations: Range<Decoration>[],
+  linesWithListFromTree: Set<number>,
 ): void {
   const tree = syntaxTree(state);
   const doc = state.doc;
@@ -127,6 +133,8 @@ function buildDecorationsFromTree(
 
   const cursorIn = (from: number, to: number) =>
     cursorPos >= from && cursorPos <= to;
+
+  const listLinesByLineFrom = new Map<number, ListLineInfo>();
 
   tree.iterate({
     enter(node) {
@@ -177,9 +185,77 @@ function buildDecorationsFromTree(
         } else {
           decorations.push(hidden.range(from, to));
         }
+        return;
+      }
+
+      // List: collect ListMark and TaskMarker per line for post-pass
+      if (name === 'ListMark') {
+        const line = doc.lineAt(from);
+        let info = listLinesByLineFrom.get(line.from);
+        if (!info) {
+          info = { listMark: { from, to } };
+          listLinesByLineFrom.set(line.from, info);
+        } else {
+          info.listMark = { from, to };
+        }
+        return;
+      }
+
+      if (name === 'TaskMarker') {
+        const line = doc.lineAt(from);
+        const info = listLinesByLineFrom.get(line.from);
+        if (info) info.taskMarker = { from, to };
       }
     },
   });
+
+  // Apply list/task decorations from collected tree nodes.
+  // Only take lines that are GFM task ([ ]/[x]) or * bullet; let regex handle "- "/"+ " and NotePlan markers ([-], [>]).
+  for (const [lineFrom, info] of listLinesByLineFrom) {
+    const line = doc.lineAt(lineFrom);
+    const { listMark, taskMarker } = info;
+    const listMarkText = doc.sliceString(listMark.from, listMark.to);
+    const isGfmTask = !!taskMarker;
+    const isBulletOnly = !taskMarker && (listMarkText === '* ' || listMarkText === '*\t');
+    if (!isGfmTask && !isBulletOnly) continue;
+
+    const indentStart = line.from;
+    const indentEnd = listMark.from;
+    const hasIndent = indentEnd > indentStart;
+    const prefixEnd = taskMarker ? taskMarker.to : listMark.to;
+    const showingRaw = cursorIn(line.from, prefixEnd);
+
+    linesWithListFromTree.add(line.from);
+
+    if (hasIndent) {
+      const indentStr = doc.sliceString(indentStart, indentEnd);
+      const tabCount = Math.min((indentStr.match(/\t/g) || []).length, 3);
+      if (tabCount > 0) {
+        decorations.push(hidden.range(indentStart, indentEnd));
+        decorations.push(indentLineDecos[tabCount].range(line.from));
+      }
+      decorations.push(listLineDeco.range(line.from));
+    } else if (!showingRaw) {
+      decorations.push(listLineDeco.range(line.from));
+    }
+
+    if (!showingRaw) {
+      if (taskMarker) {
+        decorations.push(hidden.range(listMark.from, listMark.to));
+        const markerText = doc.sliceString(taskMarker.from, taskMarker.to);
+        const checked = markerText.length >= 2 && (markerText[1] === 'x' || markerText[1] === 'X');
+        const taskState: TaskState = checked ? 'done' : 'open';
+        const widget = new TaskWidget(taskState);
+        decorations.push(Decoration.replace({ widget }).range(taskMarker.from, taskMarker.to));
+        if (checked) {
+          decorations.push(doneTaskLineDeco.range(line.from));
+        }
+      } else {
+        const widget = new BulletWidget();
+        decorations.push(Decoration.replace({ widget }).range(listMark.from, listMark.to));
+      }
+    }
+  }
 }
 
 // --- Build decorations for a given state ---
@@ -197,8 +273,9 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
 
   const tree = syntaxTree(state);
   const useTreeForBlocks = tree.length >= doc.length;
+  const linesWithListFromTree = new Set<number>();
   if (useTreeForBlocks) {
-    buildDecorationsFromTree(state, cursorPos, decorations);
+    buildDecorationsFromTree(state, cursorPos, decorations, linesWithListFromTree);
   }
 
   for (let i = 1; i <= doc.lines; i++) {
@@ -237,7 +314,7 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
 
     // Tab-indented paragraphs: hide tabs and use CSS padding for consistent
     // wrap indent. Only for lines that aren't headings, blockquotes, or lists.
-    if (!headingMatch && !quoteMatch && !taskMatch) {
+    if (!headingMatch && !quoteMatch && !taskMatch && !linesWithListFromTree.has(line.from)) {
       const tabMatch = text.match(/^(\t+)/);
       if (tabMatch) {
         const tabCount = Math.min(tabMatch[1].length, 3);
@@ -386,11 +463,8 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       }
     }
 
-    // Tasks and bullets: `- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `, `* `
-    // + is a checklist item — rendered as task for now, distinct behavior TBD
-    // The full prefix (leading whitespace + marker) is treated as one atomic zone
-    // so cursor movement doesn't cause multiple visual transitions.
-    if (taskMatch) {
+    // Tasks and bullets: from tree when available, else regex (NotePlan-specific: [-], [>], bare "- ")
+    if (taskMatch && !(useTreeForBlocks && linesWithListFromTree.has(line.from))) {
       const indentStr = taskMatch[1];
       const prefix = taskMatch[2];
       const prefixStart = line.from + indentStr.length;
