@@ -8,6 +8,8 @@ This document captures the features of [NotePlan](https://noteplan.co/features) 
 
 These features define the app. Ship nothing without them.
 
+> **Implementation order:** All P1 features are assigned to specific phases in PLAN.md (Phases 3a–6). Use PLAN.md's consolidated checklists for implementation sequencing — this document defines *what* to build and *why*, PLAN.md defines *when* and *how*.
+
 - **Daily & Weekly notes** — Weekly items that aren't completed appear at top of daily note.
 - **Project notes** — Long-lived notes (not tied to a date) with tasks, links, etc.
 - **Tasks** — Inline tasks in any note; checkboxes, completion state.

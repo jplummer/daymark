@@ -104,78 +104,182 @@ The app has four layers. Layers 1–2 produce a working prototype (editor that c
 
 **Status: Complete.** Sidebar with file tree (note titles, not filenames), Daily/Weekly quick links, Archive/Templates/Trash separated below. Back/forward navigation with Cmd+[/]. Weekly notes show date ranges and support prev/next. Project notes show path breadcrumb with emphasized title. Light/dark mode via system preference. Remix Icons throughout. Drag-to-resize sidebar. External change detection via polling (2s note, 5s directory).
 
-### Phase 3: Note index and links
+### Phase 3a: Note index, links, and navigation
 
-**Goal:** Wiki-links resolve, backlinks work, mentions and tags are clickable.
+**Goal:** Wiki-links resolve, backlinks work, mentions and tags are clickable, autocomplete works.
 
-- Scan the notes directory on startup to build the in-memory index (title → path, outgoing links, mentions, tags).
-- Parse `[[wiki-links]]` in CM6 and make them navigable (click to open the linked note).
-- Wiki-link autocomplete: typing `[[` and typing a few characters shows a ranked list of matching notes. Exact matches among active notes first, then active notes that match less well, then archived notes that match. Never show trashed notes in autocomplete (trashed notes should be searchable separately).
-- Link resolution: title-based (filename minus `.txt`). Note title can diverge from filename if the H1 is changed — see conventions below.
-- Clicking a link to a non-existent note creates a new note in the `Notes/` root.
-- Build the backlinks panel (given a note, show all notes that link to it).
-- Make `@mentions` and `#hashtags` clickable (navigate to search results).
-- Folder index view: clicking a folder in the sidebar shows a listing of its notes in the editor area (title, maybe first line preview). Same as NotePlan's folder view. Provides a browsable overview without opening individual notes.
-- Incrementally update the index when files change.
+*Sources: PLAN.md Phase 3, FEATURES.md P1 (links, backlinks, @mentions, #hashtags), IDEAS.md (autocomplete polish, cmd-click links).*
 
-**Done when:** You can click a `[[link]]` to navigate, see backlinks for any note, click an `@mention` to see all notes containing it, and click a folder to see its contents.
+**Index & data layer**
+- Scan notes directory on startup → build in-memory index (title → path, outgoing links, mentions, tags).
+- Incremental index updates when files change (via polling events from Phase 2).
 
-**IDEAS.md pick-up:** Top bar layout design (§ App Chrome) — resolve before building menus. Format menu & content type rendering (§ Editor & Rendering). Note actions menu — initial set (§ App Chrome).
+**Link resolution & navigation**
+- Wiki-link resolution: title-based (filename minus `.txt`); active notes win over archived/trashed for duplicates.
+- Wiki-link click-to-navigate (click `[[link]]` → open linked note).
+- Click non-existent link → create new note in `Notes/` root.
+- Cmd-click / context menu to open a link in a new window.
+- Backlinks panel (given a note, show all notes that link to it).
+
+**Autocomplete**
+- Wiki-link autocomplete: typing `[[` shows ranked matches (exact active > partial active > archived; never trashed).
+- Autocomplete polish: icons (file icon for notes, folder icon for context), visual divider between active and archived sections.
+- @mention autocomplete: typing `@` shows ranked mentions (by frequency then alphabetical; `_`-prefixed last).
+
+**@mentions & #hashtags**
+- @mention click → search (V1 behavior per § Design Decisions: @Mentions).
+- #hashtag click → search.
+- Careful hashtag parsing (avoid false positives: hex colors, Slack channels, headings, URL fragments).
+
+**Sidebar**
+- Folder index view: clicking a folder shows a note listing in the editor area (title + first line preview).
+
+**Done when:** You can click a `[[link]]` to navigate, see backlinks for any note, click an `@mention` to see all notes containing it, type `[[` or `@` for autocomplete, and click a folder to see its contents.
+
+### Phase 3b: Editor rendering and gutter
+
+**Goal:** CM6 rendering is robust and framework-aligned. Editor supports folding and drag-to-reorder. Typography and spacing are refined.
+
+*Sources: IDEAS.md (CM6 refactors, heading folding, left gutter, numbered lists, style pass, proportional fonts), FEATURES.md P1 (auto-task creation, priority markers, drag to reorder).*
+
+**CM6 foundation (do first — before adding more syntax support)**
+- ⚠️ CM6 syntax tree refactor: replace regex-based live preview with Lezer parse tree via `syntaxTree(state)`.
+- ⚠️ CM6 theme refactor: replace CSS overrides + `!important` with `EditorView.theme()` extension. Eliminates fragile `calc()` offsets.
+
+**Content type rendering**
+- Auto-task creation: typing `- ` (hyphen space) → `- [ ] ` (open task); `* ` stays plain bullet.
+- Priority markers (`!`/`!!`/`!!!`) rendering with increasing visual saturation.
+- Better numbered lists (indent adjusts to widest number in list).
+
+**Gutter infrastructure**
+- Left gutter area for controls (nothing in content area protrudes into padding).
+- Heading folding via gutter chevrons (fold/collapse text under headings).
+- Drag to reorder via gutter drag handles (tasks, lines, selections within a note).
+
+**Typography & style**
+- Fine style adjustments pass: text size, line-height, line margin, bullet centering, marker-to-text gap, heading spacing, blockquote bar position.
+- Proportional fonts: SF Pro / system sans-serif for body, serif (New York) for headings, monospace for code only.
+
+**Done when:** Live preview uses the CM6 syntax tree (not regex). Headings can be folded. Lines can be dragged to reorder. Typography feels polished and intentional.
 
 ### Phase 4: Daily/weekly notes and calendar
 
 **Goal:** The daily-driver workflow — open today's note, see the compact calendar, get uncompleted weekly items surfaced.
 
+*Sources: PLAN.md Phase 4, FEATURES.md P1 (daily/weekly notes, compact calendar).*
+
 - Calendar notes (daily and weekly) are auto-created when first navigated to or when something is scheduled into them. A note for a given date may never exist if it's never visited or targeted.
-- Implement daily note creation (from template if one exists, otherwise blank) tied to today's date.
-- Implement weekly note creation with the same approach. Weekly notes live in `Calendar/YYYY-Wnn.txt`.
-- Build the compact calendar widget — shows the current month, highlights dates that have notes with open tasks.
-- Surface open tasks from the weekly note in a reference panel at the top of all daily notes in that week. (NotePlan does this; it's useful but could be improved later.)
-- Weekly note workflow: written at start of week, reviewing prior week's missed items. Tasks that belong to the week but not a specific day go here. Re-reviewed mid-week or Friday.
+- Daily note creation from template if one exists, otherwise blank.
+- Weekly note creation (`Calendar/YYYY-Wnn.txt`), same approach.
+- Compact calendar widget: shows current month, highlights dates that have notes with open tasks.
+- Surface open tasks from the weekly note in a reference panel at the top of daily notes for that week.
+- Weekly note workflow: written at start of week; tasks for the week not assigned to a specific day. Re-reviewed mid-week or Friday.
 
 **Done when:** Launching Daymark opens today's daily note with weekly items surfaced, and the calendar lets you navigate to any day.
 
 ### Phase 5: Tasks and scheduling
 
-**Goal:** Full task management — checkboxes, completion, the `>date` scheduling syntax, carry-forward with `>today`, and synced lines.
+**Goal:** Full task management — checkboxes, scheduling, carry-forward, synced lines, and the unified context menu.
 
-- Implement task checkbox toggling in the editor (click or keyboard shortcut to cycle states).
-- Parse `>date` syntax and register scheduled items in the note index.
-- When opening a daily note, pull in tasks scheduled for that date from other notes. Scheduled tasks appear at the top of the daily note.
-- Display scheduled items with a reference back to their source note.
-- A task can only be scheduled to one date at a time. Scheduling to a new date replaces the previous `>date`.
-- The original task always stays in place in its source note (preserving context). It is never removed or moved — only marked as scheduled.
-- Implement `>today` carry-forward. Key difference from `>YYYY-MM-DD`: `>today` tasks roll forward automatically — if not done today, they surface on tomorrow's note, and so on. NotePlan uses a display-only reference panel for this (not written to the daily note file). We should do better: NotePlan's panel lets you drag tasks out, which removes them from the source and destroys context. **Design decision needed:** how do we render carry-forward tasks? Options include writing them into the file as synced lines, or a panel that doesn't allow destructive moves. Discuss before building.
-- Implement synced lines: scheduled tasks that appear in a daily/weekly note are live references to their source. Edits in either location propagate to the other.
-- Stale tasks (scheduled date passed, still incomplete) are surfaced via the compact calendar's open-item highlighting — the calendar is the nudge to clean up the past.
+*Sources: PLAN.md Phase 5, FEATURES.md P1 (tasks, scheduling, carry-forward, synced lines, task context menu, click-to-toggle), IDEAS.md (schedule to weekly, convenience shortcuts). Design decisions from 2026-02-25 conversation.*
 
-**Done when:** You can schedule a task in a project note with `>2026-02-25` and it appears at the top of the Feb 25 daily note. You can carry a stale task forward with `>today`. Editing a synced line in the daily note updates the source, and vice versa.
+#### Task interaction
+- Left-click task icon = toggle between done and open (most frequent interaction, one click).
+- Unified right-click context menu on any line (see § Design Decisions: Unified Context Menu).
+- Schedule submenu: Today, tomorrow, relative shortcuts (+1d, +1w, etc.), this week, next week, calendar picker with days and weeks.
 
-**IDEAS.md pick-up:** Note actions menu — task-dependent actions: Move all open tasks, Move completed tasks to bottom (§ App Chrome).
+#### Scheduling engine
+- Parse `>YYYY-MM-DD` syntax, register scheduled items in note index.
+- Scheduled tasks pulled into target daily note at top, with `<YYYY-MM-DD` back-reference to source.
+- Single-date scheduling constraint: scheduling to a new date replaces the previous `>date`.
+- Original task always preserved in source note (marked `[>]`), never removed or moved.
+- Schedule to weekly notes (`>YYYY-Wnn`).
+- Scheduling convenience shortcuts (`>tomorrow`, `>+1d`, `>+3d`, `>+1w`, `>+1m` → auto-convert to concrete date on entry).
+
+#### `>today` carry-forward (see § Design Decisions: `>today` Carry-Forward)
+- `>today` panel at top of today's daily note (open by default, collapsible).
+- Panel shows `>today`-tagged tasks from other notes, with source note indicated.
+- Panel only on today's daily note (not past daily notes, not weekly notes).
+- Drag from panel → synced line in note body, hides from panel.
+- Check off in panel → propagates to source.
+- Task rolls forward daily until completed — reappears in each new day's panel.
+
+#### Synced lines (see also § Discovered: Synced Lines conventions)
+- Block ID format: `^xxxxxx` (6 alphanumeric characters).
+- All copies share same `^blockid`; completion propagation updates ALL copies in ALL files.
+- Edit propagation: edits to any copy propagate to all others.
+- Drag from any pane generates `^blockid` on source line if not present (background write to source file).
+- Pane shows all matching references minus those already synced in current note.
+- Deleting synced line from note → item reappears in pane.
+
+#### Stale task surfacing
+- Tasks with past `>YYYY-MM-DD` still open → surfaced by compact calendar highlighting (not `>today` panel).
+
+#### Note actions (task-dependent)
+- Move all open tasks (to another date).
+- Move completed tasks to bottom.
+
+**Done when:** You can schedule a task with `>2026-02-25` and it appears in the Feb 25 daily note. `>today` tasks appear in today's panel and roll forward. Dragging from the panel creates synced lines. Editing a synced line updates all copies. Right-click context menu provides all task and line actions.
 
 ### Phase 6: Search and mention management
 
-**Goal:** Find anything quickly. Rename mentions globally.
+**Goal:** Find anything quickly. Rename mentions globally. @mention reference pane for 1:1 prep.
 
-- Implement full-text search across all notes (likely using the note index + a simple text search; consider `ripgrep` via Tauri command if performance matters).
-- Build search UI that doesn't have NotePlan's click-through problem.
-- Implement global mention renaming: rename `@OldName` to `@NewName` across every file that contains it.
+*Sources: PLAN.md Phase 6, FEATURES.md P1 (search, mention renaming), IDEAS.md (@mention association, reference pane, trashed note search). Design decisions from 2026-02-25 conversation.*
 
-**Done when:** Search returns results without accidental navigation, and renaming a mention updates all documents.
+#### Search
+- Full-text search across all notes (consider `ripgrep` via Tauri command if performance matters).
+- Search UI that doesn't have NotePlan's click-through problem.
+- Trashed note search (searchable for recovery, never in autocomplete or link resolution).
+
+#### Mention management
+- Global mention rename: `@OldName` → `@NewName` across all files, confirmation dialog with affected file count.
+- Mention delete: strip `@` from all occurrences, preserve text (non-destructive).
+
+#### @mention reference pane (see § Design Decisions: @Mention Reference Pane)
+- @mention → note association: parse line 2 (first line after H1) for @mentions.
+- Reference pane at bottom of associated notes, collapsed by default, one section per tracked @mention.
+- Content ordered: open tasks first, then non-task text references; grouped by source note.
+- Default filters (toggles, on by default): hide completed tasks, hide content older than 90 days.
+- Date inference for 90-day filter: calendar note filename → nearest date heading above @mention → above all dates = most recent (reverse-chron) → no dates = always shown.
+- Non-task text as single-line truncated previews.
+- Inline expand: click to show surrounding lines from source, supports text selection/copy.
+- Drag from pane → synced line in note body, hides from pane (standard drag-from-pane behavior).
+
+**Done when:** Search returns results without accidental navigation. Renaming a mention updates all documents. Person notes show a reference pane with filtered, grouped @mention results. Dragging from the pane creates synced lines.
 
 ### Beyond Phase 6
 
-At this point Daymark should be a functional daily driver. Remaining Priority 1 features (templates with logic, stable links on move) can be tackled as needed. Priority 2 features (theming, timeline, filters, timeblocking, calendar integration) come after.
+At this point Daymark should be a functional daily driver. Remaining work organized by area.
 
-**IDEAS.md pick-up:** Format menu — image and file attachment support (§ Editor & Rendering). Note actions menu — View revisions. Share menu (§ App Chrome).
+#### App chrome
+- Top bar layout design (prerequisite for menus — decide where date/title, back/forward, menus, date navigation go).
+- Format menu: markdown formatting for all content types. Full inventory in IDEAS.md § Editor & Rendering. Image and file attachment support later.
+- Note actions menu — initial set: Open in new window, Keep window on top, Show note in Finder, Show note in sidebar.
+- Note actions menu — later: View revisions.
+- Share menu (contents TBD).
+- Settings panel (syntax highlighting, colors, notes directory, sync settings).
+- App icon (note + calendar motif).
+- Dock icon behavior (single icon, not per-window).
 
-#### Sidebar context menus
+#### Remaining Priority 1 features
+- Note templates with logic (conditional/dynamic content).
+- Stable links on move (moving a note into a folder must not break links to/from it).
 
-Right-click context menus for the sidebar. Actions vary by target:
+#### Sidebar enhancements
+- Sidebar context menus:
+  - **Note:** Open in new window, Show in Finder, Copy link, Duplicate, Rename, Archive, Move to trash.
+  - **Folder:** New subfolder, New note, Open in new window, Show in Finder, Copy link, Rename, Archive, Move to trash.
+  - **Blank area (no target):** New folder, New note, Refresh.
+- Drag and drop in sidebar (files into folders, folders into folders; ⚠️ update wiki-links on move).
+- Move note while keeping it open.
 
-- **Note:** Open in new window, Show in Finder, Copy link, Duplicate, Rename, Archive, Move to trash.
-- **Folder:** New subfolder, New note, Open in new window, Show in Finder, Copy link, Rename, Archive, Move to trash.
-- **Blank area (no target):** New folder, New note, Refresh.
+#### Priority 2 features
+- Theming (custom color schemes, dark/light mode).
+- Filters (overdue tasks, by project, by tag).
+- Vertical calendar / timeline view.
+- TimeBlocking (drag tasks onto timeline).
+- Calendar integration (Google Calendar / system calendar events inline).
 
 ---
 
@@ -314,6 +418,181 @@ Plain text `@PersonName`. No special syntax beyond the `@` prefix. Unchanged fro
 - Scan-derived from all files. No separate registry.
 - Performance monitored — incremental indexing or caching added if scanning becomes slow.
 - **Implementation note:** The current regex in `note-index.ts` uses `\w+` which doesn't match `/` or `-`. Update to `[A-Za-z][A-Za-z0-9_/\-]*` when implementing.
+
+---
+
+## Design Decisions: `>today` Carry-Forward
+
+Discussed and decided 2026-02-25.
+
+### Panel design
+
+- `>today` tasks appear in a reference panel at the top of today's daily note.
+- Panel is open by default, collapsible.
+- Panel only appears on today's daily note — not past daily notes, not weekly notes. Today's note is "home base" for the day's work.
+- Each entry shows the task text and its source note.
+- `>YYYY-MM-DD` tasks scheduled to today are written into the daily note file, not the panel. The panel is exclusively for `>today`-tagged tasks.
+
+### Interaction
+
+- **Check off in panel:** Toggles the task to done; propagates to the source note.
+- **Drag out of panel:** Creates a synced line (`^blockid`) in the note body at the drop position. The task hides from the panel (so it's not shown twice). The source note's original task is always preserved — dragging is non-destructive.
+- **Rolling forward:** If a `>today` task is not completed by end of day, it reappears in tomorrow's panel. If it was dragged into today's note, the synced line stays in today's note; the task reappears in tomorrow's panel for re-triage.
+
+### Key distinction from NotePlan
+
+NotePlan's `>today` panel allows dragging tasks out, but this *removes* the task from its source note, destroying context. Daymark's approach: dragging creates a synced line instead, preserving the source. Same UX feel, no information loss.
+
+### Stale tasks
+
+Tasks with a specific `>YYYY-MM-DD` whose date has passed do NOT appear in the `>today` panel — they are surfaced as stale via the compact calendar's open-item highlighting. Only explicitly `>today`-tagged tasks use the rolling panel.
+
+---
+
+## Design Decisions: @Mention Reference Pane
+
+Discussed and decided 2026-02-25.
+
+### @mention → note association
+
+- Parse line 2 (the first line after the H1) for @mentions. Any @mentions found there are the note's tracked associations.
+- Notes without an @mention on line 2 have no association and no reference pane.
+- No special syntax needed — just @mentions in regular markdown text (e.g., `**See also @BrittanyChoy, [Lattice link](url)**`).
+- Multiple @mentions on line 2 are supported (one collapsible section per tracked mention).
+- Line 2 is rendered as normal markdown; Daymark quietly notes the @mentions for association purposes.
+
+### Reference pane
+
+- Appears at the bottom of notes with tracked @mentions. One collapsible section per tracked @mention.
+- Collapsed by default.
+- Content ordered: open tasks first, then non-task text references. Grouped by source note within each section.
+- Non-task text shown as single-line truncated previews for compactness.
+
+### Filtering
+
+Default filters (toggles, all on by default):
+- **Hide completed tasks** — most @mentions in done tasks are irrelevant for 1:1 prep.
+- **Hide content older than 90 days** — uses date inference, no edit tracking needed:
+  - Calendar notes: date is the filename.
+  - Other notes: nearest date heading (H2, etc.) above the @mention line.
+  - Above all date headings: treated as most recent (notes are reverse-chronological).
+  - No date headings at all: always shown (never filtered).
+
+### Context viewing
+
+- **Inline expand:** Click any reference line in the pane to expand and show surrounding lines from the source note. Supports text selection and copy. Collapsible.
+- Preferred over hover popovers (which are fragile and don't support text selection well).
+
+### Drag from pane
+
+Standard drag-from-pane behavior (see § Design Decisions: Drag-from-Pane):
+- Dragging a reference creates a synced line in the note body.
+- Hides the item from the pane.
+- Deleting the synced line causes the item to reappear in the pane.
+- Single task lines only (not subtask blocks).
+
+---
+
+## Design Decisions: Drag-from-Pane (Common Pattern)
+
+Discussed and decided 2026-02-25.
+
+Drag-from-pane is a shared interaction pattern used by both the `>today` panel and @mention reference panes. The behavior is identical in both contexts.
+
+### Mechanics
+
+1. User drags a reference line from any pane into the note body.
+2. Daymark creates a synced line at the drop position with a shared `^blockid`.
+3. If the source line doesn't already have a `^blockid`, Daymark generates one and writes it to the source file (background write).
+4. The dragged item hides from the pane.
+
+### Pane contents
+
+The pane always shows: all references matching its filters, minus any that already exist as synced lines in the current note. This means:
+- Dragging out → item disappears from pane (synced copy now exists in note).
+- Deleting the synced line → item reappears in pane (no synced copy in note anymore).
+- The pane is always a complete, filtered view.
+
+### Non-task lines
+
+Non-task text references are also draggable. NotePlan supports synced lines on any content, not just tasks. Same `^blockid` mechanism.
+
+### `>today` rolling interaction
+
+If a `>today` task is dragged into Monday's note and not completed:
+- Tuesday's `>today` panel shows the task again (it rolled forward).
+- The synced line remains in Monday's note.
+- User decides whether to drag it into Tuesday's note. Checking it off from either Tuesday's panel or Monday's synced line propagates completion to all copies.
+
+---
+
+## Design Decisions: Unified Context Menu
+
+Discussed and decided 2026-02-25.
+
+### Problem
+
+NotePlan has three separate context menus: a scheduling arrow in the gutter, a right-click context menu on lines, and a synced-line menu on the drag handle. This is fragmented and hard to discover.
+
+### Solution
+
+One right-click context menu on any line. Task-specific actions appear conditionally based on task state. Sections separated by dividers.
+
+**Right-click a task line:**
+
+```
+Schedule               ▸  (submenu)
+Complete / Open / Cancel   (state-dependent, see rules below)
+─────────────────────────
+Copy Synced Line
+Format                 ▸  (submenu: markdown options)
+─────────────────────────
+Cut
+Copy
+Paste
+Paste as Plain Text
+```
+
+**Right-click a non-task line:**
+
+```
+Copy Synced Line
+Format                 ▸  (submenu: markdown options)
+─────────────────────────
+Cut
+Copy
+Paste
+Paste as Plain Text
+```
+
+### Task action rules
+
+Actions shown depend on current task state:
+- **Open task:** Schedule, Complete, Cancel.
+- **Done task:** Open (reopen), Cancel.
+- **Cancelled task:** Schedule, Complete, Open (reopen).
+- **Scheduled task:** Schedule (reschedule), Complete, Cancel.
+
+### Schedule submenu
+
+- `>today` (repeat until completed).
+- Tomorrow's date.
+- Relative shortcuts: +1d, +3d, +1w, +1m.
+- This week (`>YYYY-Wnn`).
+- Next week.
+- Calendar picker (days and weeks).
+
+### Left-click task icon
+
+Separate from the context menu. Left-clicking the task icon toggles between done and open. This is the most frequent interaction and should be one click.
+
+### Deferred items
+
+- Format submenu contents: populated when the format menu is built (Beyond Phase 6).
+- Insert Template: later.
+- Insert Table: later.
+- Copy wiki link to line: someday/maybe.
+- Copy URL to line: someday/maybe.
 
 ---
 
