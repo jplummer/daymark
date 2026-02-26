@@ -15,9 +15,9 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { autocompletion } from '@codemirror/autocomplete';
 import { livePreview } from './live-preview';
-import { initSidebar, setActiveTreeItem, refreshSidebar, TreeNode } from './sidebar';
-import { noteIndex } from './note-index';
-import { wikiLinkCompletion } from './completions';
+import { initSidebar, setActiveTreeItem, refreshSidebar, renderMentionsSidebar, refreshMentionsSidebar, renderHashtagsSidebar, refreshHashtagsSidebar, TreeNode } from './sidebar';
+import { noteIndex, SearchResult } from './note-index';
+import { wikiLinkCompletion, mentionCompletion, hashtagCompletion } from './completions';
 import 'remixicon/fonts/remixicon.css';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
@@ -33,6 +33,10 @@ interface NoteLocation {
   date?: Date;
   weekInfo?: { year: number; week: number };
 }
+
+type NavEntry =
+  | { kind: 'note'; note: NoteLocation }
+  | { kind: 'search'; term: string };
 
 // --- Date helpers ---
 
@@ -106,7 +110,7 @@ let view: EditorView | null = null;
 let isDirty = false;
 let lastSavedContent: string | null = null; // Content as last written by us
 
-const navHistory: NoteLocation[] = [];
+const navHistory: NavEntry[] = [];
 let navIndex = -1;
 
 // Polling intervals for external change detection
@@ -193,6 +197,8 @@ function scheduleSave() {
       lastSavedContent = content;
       isDirty = false;
       noteIndex.updateEntry(currentNote.relPath, content);
+      refreshMentionsSidebar();
+      refreshHashtagsSidebar();
       setStatus('Saved');
       setTimeout(() => setStatus(''), 1500);
     } catch (err) {
@@ -230,10 +236,18 @@ async function loadFile(relPath: string): Promise<string> {
 
 // --- Back/forward as CM6 keybindings ---
 
+function navigateToEntry(entry: NavEntry) {
+  if (entry.kind === 'search') {
+    showTagSearch(entry.term, false);
+  } else {
+    navigateTo(entry.note, false);
+  }
+}
+
 function goBack(): boolean {
   if (navIndex > 0) {
     navIndex--;
-    navigateTo(navHistory[navIndex], false);
+    navigateToEntry(navHistory[navIndex]);
     return true;
   }
   return false;
@@ -242,7 +256,7 @@ function goBack(): boolean {
 function goForward(): boolean {
   if (navIndex < navHistory.length - 1) {
     navIndex++;
-    navigateTo(navHistory[navIndex], false);
+    navigateToEntry(navHistory[navIndex]);
     return true;
   }
   return false;
@@ -291,6 +305,30 @@ const linkClickHandler = EditorView.domEventHandlers({
       if (linkTarget) {
         event.preventDefault();
         navigateToWikiLink(linkTarget);
+        return true;
+      }
+      return false;
+    }
+
+    // @mentions
+    const isMention = target.closest('.cm-live-preview-mention') as HTMLElement | null;
+    if (isMention) {
+      const mention = isMention.dataset.mention;
+      if (mention) {
+        event.preventDefault();
+        showTagSearch(mention);
+        return true;
+      }
+      return false;
+    }
+
+    // #hashtags
+    const isHashtag = target.closest('.cm-live-preview-hashtag') as HTMLElement | null;
+    if (isHashtag) {
+      const hashtag = isHashtag.dataset.hashtag;
+      if (hashtag) {
+        event.preventDefault();
+        showTagSearch(hashtag);
         return true;
       }
       return false;
@@ -387,6 +425,211 @@ const pasteUrlHandler = EditorView.domEventHandlers({
   },
 });
 
+// --- Tag search (shared by @mentions and #hashtags) ---
+
+let searchActive = false;
+let hideDoneInSearch = true;
+let showArchivedInSearch = false;
+
+function searchFnForTerm(term: string): Promise<SearchResult[]> {
+  if (term.startsWith('#')) return noteIndex.searchHashtag(term);
+  return noteIndex.searchMention(term);
+}
+
+function showTagSearch(term: string, addToHistory = true) {
+  const container = document.getElementById('search-results')!;
+  const editorEl = document.getElementById('editor')!;
+  const backlinksPanel = document.getElementById('backlinks-panel');
+
+  container.textContent = '';
+  container.classList.remove('hidden');
+  editorEl.style.display = 'none';
+  if (backlinksPanel) backlinksPanel.classList.add('hidden');
+  searchActive = true;
+
+  if (addToHistory) {
+    navHistory.splice(navIndex + 1);
+    navHistory.push({ kind: 'search', term });
+    navIndex = navHistory.length - 1;
+  }
+  updateHistoryButtons();
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'search-header';
+
+  const title = document.createElement('span');
+  title.className = 'search-header-mention';
+  title.textContent = term;
+
+  const countEl = document.createElement('span');
+  countEl.className = 'search-header-count';
+  countEl.textContent = 'Searching…';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'search-header-close';
+  closeBtn.title = 'Close search (Esc)';
+  closeBtn.innerHTML = '<i class="ri-close-line"></i>';
+  closeBtn.addEventListener('click', closeSearch);
+
+  header.appendChild(title);
+  header.appendChild(countEl);
+  header.appendChild(closeBtn);
+  container.appendChild(header);
+
+  // Filter bar (populated after results load)
+  const filterBar = document.createElement('div');
+  filterBar.className = 'search-filter-bar';
+  container.appendChild(filterBar);
+
+  // Results area
+  const resultsArea = document.createElement('div');
+  resultsArea.className = 'search-results-area';
+  container.appendChild(resultsArea);
+
+  searchFnForTerm(term).then((results) => {
+    // Separate active vs archived, deduplicate archived copies
+    const activeResults = results.filter((r) => !r.entry.isArchived);
+    const activeFilenames = new Set(activeResults.map((r) => r.entry.filename));
+    const archivedResults = results
+      .filter((r) => r.entry.isArchived)
+      .filter((r) => !activeFilenames.has(r.entry.filename));
+
+    const hasDone = results.some((r) => r.lines.some((l) => l.isDone));
+    const hasArchived = archivedResults.length > 0;
+
+    // Build filter bar
+    filterBar.textContent = '';
+    if (hasDone) {
+      const doneToggle = document.createElement('button');
+      doneToggle.className = `search-filter-toggle${hideDoneInSearch ? '' : ' active'}`;
+      doneToggle.textContent = hideDoneInSearch ? 'Show done' : 'Hide done';
+      doneToggle.addEventListener('click', () => {
+        hideDoneInSearch = !hideDoneInSearch;
+        showTagSearch(term, false);
+      });
+      filterBar.appendChild(doneToggle);
+    }
+    if (hasArchived) {
+      const archiveToggle = document.createElement('button');
+      archiveToggle.className = `search-filter-toggle${showArchivedInSearch ? ' active' : ''}`;
+      archiveToggle.textContent = showArchivedInSearch ? 'Hide archived' : 'Show archived';
+      archiveToggle.addEventListener('click', () => {
+        showArchivedInSearch = !showArchivedInSearch;
+        showTagSearch(term, false);
+      });
+      filterBar.appendChild(archiveToggle);
+    }
+    if (!hasDone && !hasArchived) {
+      filterBar.style.display = 'none';
+    }
+
+    const visibleResults = showArchivedInSearch
+      ? [...activeResults, ...archivedResults]
+      : activeResults;
+
+    renderSearchResults(resultsArea, visibleResults, countEl, archivedResults.length);
+  });
+}
+
+function renderSearchResults(
+  container: HTMLElement,
+  results: SearchResult[],
+  countEl: HTMLElement,
+  hiddenArchivedCount: number,
+) {
+  container.textContent = '';
+
+  let totalLines = 0;
+  let visibleLines = 0;
+  let noteCount = 0;
+
+  for (const result of results) {
+    totalLines += result.lines.length;
+  }
+
+  for (const result of results) {
+    const visibleForNote = hideDoneInSearch
+      ? result.lines.filter((l) => !l.isDone)
+      : result.lines;
+
+    if (visibleForNote.length === 0) continue;
+    visibleLines += visibleForNote.length;
+    noteCount++;
+
+    const group = document.createElement('div');
+    group.className = 'search-note-group';
+
+    const noteTitle = document.createElement('div');
+    noteTitle.className = 'search-note-title';
+    const archiveLabel = result.entry.isArchived ? ' <span class="search-archived-badge">archived</span>' : '';
+    noteTitle.innerHTML = `<i class="ri-file-text-line"></i> ${escapeHtml(result.entry.title)}${archiveLabel}`;
+    noteTitle.addEventListener('click', () => {
+      closeSearch();
+      navigateTo({
+        type: 'project',
+        relPath: result.entry.relPath,
+        displayName: result.entry.title,
+      });
+    });
+    group.appendChild(noteTitle);
+
+    for (const line of visibleForNote) {
+      const lineEl = document.createElement('div');
+      lineEl.className = `search-line${line.isDone ? ' done' : ''}`;
+      lineEl.textContent = line.text.trim();
+      lineEl.addEventListener('click', () => {
+        closeSearch();
+        navigateTo({
+          type: 'project',
+          relPath: result.entry.relPath,
+          displayName: result.entry.title,
+        }, true, line.lineNum);
+      });
+      group.appendChild(lineEl);
+    }
+
+    container.appendChild(group);
+  }
+
+  // Status line
+  const parts: string[] = [];
+  parts.push(`${visibleLines} result${visibleLines === 1 ? '' : 's'} in ${noteCount} note${noteCount === 1 ? '' : 's'}`);
+  const doneHidden = totalLines - visibleLines;
+  if (doneHidden > 0 && hideDoneInSearch) parts.push(`${doneHidden} done hidden`);
+  if (hiddenArchivedCount > 0 && !showArchivedInSearch) parts.push(`${hiddenArchivedCount} archived note${hiddenArchivedCount === 1 ? '' : 's'} hidden`);
+  countEl.textContent = parts.join(' · ');
+
+  if (visibleLines === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'search-empty';
+    const reasons: string[] = [];
+    if (totalLines > 0 && hideDoneInSearch) reasons.push('done tasks are hidden');
+    if (hiddenArchivedCount > 0 && !showArchivedInSearch) reasons.push('archived notes are hidden');
+    if (reasons.length > 0) {
+      empty.textContent = `No visible results — ${reasons.join(' and ')}.`;
+    } else {
+      empty.textContent = 'No results found.';
+    }
+    container.appendChild(empty);
+  }
+}
+
+function closeSearch() {
+  const container = document.getElementById('search-results')!;
+  const editorEl = document.getElementById('editor')!;
+  container.classList.add('hidden');
+  container.textContent = '';
+  editorEl.style.display = '';
+  searchActive = false;
+  updateHistoryButtons();
+  view?.focus();
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // --- Editor extensions ---
 
 const editorExtensions = [
@@ -406,7 +649,7 @@ const editorExtensions = [
   }),
   EditorView.lineWrapping,
   autocompletion({
-    override: [wikiLinkCompletion],
+    override: [wikiLinkCompletion, mentionCompletion, hashtagCompletion],
     activateOnTyping: true,
   }),
   livePreview,
@@ -468,6 +711,8 @@ async function pollNotesDirectory() {
         lastDirSnapshot = snapshot;
         await noteIndex.build();
         refreshSidebar();
+        refreshMentionsSidebar();
+        refreshHashtagsSidebar();
       }
     } catch {
       // Ignore transient read errors
@@ -477,14 +722,32 @@ async function pollNotesDirectory() {
 
 // --- Navigation ---
 
-async function navigateTo(note: NoteLocation, addToHistory = true) {
+let pendingScrollRAF: number | null = null;
+
+async function navigateTo(note: NoteLocation, addToHistory = true, targetLine?: number) {
+  // Cancel any stale scroll from a previous navigation
+  if (pendingScrollRAF !== null) {
+    cancelAnimationFrame(pendingScrollRAF);
+    pendingScrollRAF = null;
+  }
+
+  // If we're leaving a search view to go to a note, close the search UI
+  if (searchActive) {
+    const container = document.getElementById('search-results')!;
+    const editorEl = document.getElementById('editor')!;
+    container.classList.add('hidden');
+    container.textContent = '';
+    editorEl.style.display = '';
+    searchActive = false;
+  }
+
   await flushSave();
 
   currentNote = note;
 
   if (addToHistory) {
     navHistory.splice(navIndex + 1);
-    navHistory.push(note);
+    navHistory.push({ kind: 'note', note });
     navIndex = navHistory.length - 1;
   }
 
@@ -504,6 +767,18 @@ async function navigateTo(note: NoteLocation, addToHistory = true) {
     });
   }
 
+  if (targetLine && targetLine > 0 && targetLine <= view.state.doc.lines) {
+    const v = view;
+    pendingScrollRAF = requestAnimationFrame(() => {
+      pendingScrollRAF = null;
+      const line = v.state.doc.line(targetLine);
+      v.dispatch({
+        selection: { anchor: line.from },
+        effects: EditorView.scrollIntoView(line.from, { y: 'center' }),
+      });
+    });
+  }
+
   pollCurrentNote(note.relPath);
   updateBacklinksPanel(note.relPath);
   setStatus('');
@@ -511,6 +786,7 @@ async function navigateTo(note: NoteLocation, addToHistory = true) {
 }
 
 function updateBacklinksPanel(relPath: string) {
+  if (searchActive) return;
   const panel = document.getElementById('backlinks-panel');
   const list = document.getElementById('backlinks-list');
   const title = document.getElementById('backlinks-title');
@@ -673,10 +949,11 @@ function wireNavButtons() {
     navigateTo(currentWeeklyNote());
   });
 
-  // Global keyboard shortcuts for back/forward (when editor not focused)
+  // Global keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.metaKey && e.key === '[') { e.preventDefault(); goBack(); }
     if (e.metaKey && e.key === ']') { e.preventDefault(); goForward(); }
+    if (e.key === 'Escape' && searchActive) { e.preventDefault(); closeSearch(); }
   });
 }
 
@@ -710,6 +987,10 @@ async function init() {
 
   // Re-render backlinks now that index is ready (initial navigateTo ran before index finished)
   if (currentNote) updateBacklinksPanel(currentNote.relPath);
+
+  // Build mentions sidebar now that index is ready
+  renderMentionsSidebar((mention) => showTagSearch(mention));
+  renderHashtagsSidebar((hashtag) => showTagSearch(hashtag));
 
   pollNotesDirectory();
 }

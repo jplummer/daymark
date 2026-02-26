@@ -27,7 +27,12 @@ export interface NoteEntry {
 
 export interface BacklinkRef {
   entry: NoteEntry;
-  context: string; // The line containing the link
+  context: string;
+}
+
+export interface SearchResult {
+  entry: NoteEntry;
+  lines: { lineNum: number; text: string; isDone: boolean }[];
 }
 
 // --- Parsing ---
@@ -37,8 +42,8 @@ function linkKey(filename: string): string {
 }
 
 const WIKILINK_RE = /\[\[(.+?)\]\]/g;
-const MENTION_RE = /(?<![a-zA-Z0-9.])@([A-Za-z]\w+)/g;
-const HASHTAG_RE = /(?:^|(?<=\s))#([A-Za-z]\w+)/gm;
+const MENTION_RE = /(?:^|(?<=\s))@([A-Za-z_][A-Za-z0-9_/\-&]*)/g;
+const HASHTAG_RE = /(?:^|(?<=\s))#([A-Za-z][A-Za-z0-9_/\-&]*)/gm;
 
 interface ParsedContent {
   title: string | null;
@@ -300,6 +305,57 @@ export class NoteIndex {
     return [...set].sort();
   }
 
+  /**
+   * @mentions deduplicated case-insensitively, with canonical form (most frequent
+   * casing) preserved. Counts only active (non-archived) notes. Archive-only
+   * mentions are included with count 0.
+   */
+  getMentionsRanked(): { mention: string; count: number; archiveOnly: boolean }[] {
+    // key = lowercase mention → { forms: Map<exactForm, activeCount>, totalActive }
+    const agg = new Map<string, { forms: Map<string, number>; active: number; total: number }>();
+
+    for (const entry of this._entries) {
+      if (entry.isTrashed) continue;
+      const seen = new Set<string>();
+      for (const m of entry.mentions) {
+        const key = m.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        let bucket = agg.get(key);
+        if (!bucket) {
+          bucket = { forms: new Map(), active: 0, total: 0 };
+          agg.set(key, bucket);
+        }
+        bucket.total++;
+        if (!entry.isArchived) {
+          bucket.active++;
+          bucket.forms.set(m, (bucket.forms.get(m) || 0) + 1);
+        } else {
+          // Track form even for archived so we have a canonical if archive-only
+          if (!bucket.forms.has(m)) bucket.forms.set(m, 0);
+        }
+      }
+    }
+
+    return [...agg.values()].map((bucket) => {
+      // Canonical form = most-frequent casing among active notes (or any if archive-only)
+      let canonical = '';
+      let bestCount = -1;
+      for (const [form, cnt] of bucket.forms) {
+        if (cnt > bestCount) { canonical = form; bestCount = cnt; }
+      }
+      return {
+        mention: canonical,
+        count: bucket.active,
+        archiveOnly: bucket.active === 0,
+      };
+    }).sort((a, b) => {
+      if (a.archiveOnly !== b.archiveOnly) return a.archiveOnly ? 1 : -1;
+      return a.mention.localeCompare(b.mention, undefined, { sensitivity: 'base' });
+    });
+  }
+
   /** All unique #hashtags across indexed notes. */
   getAllHashtags(): string[] {
     const set = new Set<string>();
@@ -307,6 +363,52 @@ export class NoteIndex {
       for (const h of entry.hashtags) set.add(h);
     }
     return [...set].sort();
+  }
+
+  /**
+   * #hashtags deduplicated case-insensitively, with canonical form preserved.
+   * Same logic as getMentionsRanked() but without _-prefix grouping.
+   */
+  getHashtagsRanked(): { hashtag: string; count: number; archiveOnly: boolean }[] {
+    const agg = new Map<string, { forms: Map<string, number>; active: number }>();
+
+    for (const entry of this._entries) {
+      if (entry.isTrashed) continue;
+      const seen = new Set<string>();
+      for (const h of entry.hashtags) {
+        const key = h.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        let bucket = agg.get(key);
+        if (!bucket) {
+          bucket = { forms: new Map(), active: 0 };
+          agg.set(key, bucket);
+        }
+        if (!entry.isArchived) {
+          bucket.active++;
+          bucket.forms.set(h, (bucket.forms.get(h) || 0) + 1);
+        } else {
+          if (!bucket.forms.has(h)) bucket.forms.set(h, 0);
+        }
+      }
+    }
+
+    return [...agg.values()].map((bucket) => {
+      let canonical = '';
+      let bestCount = -1;
+      for (const [form, cnt] of bucket.forms) {
+        if (cnt > bestCount) { canonical = form; bestCount = cnt; }
+      }
+      return {
+        hashtag: canonical,
+        count: bucket.active,
+        archiveOnly: bucket.active === 0,
+      };
+    }).sort((a, b) => {
+      if (a.archiveOnly !== b.archiveOnly) return a.archiveOnly ? 1 : -1;
+      return a.hashtag.localeCompare(b.hashtag, undefined, { sensitivity: 'base' });
+    });
   }
 
   /** Look up an entry by its relPath. */
@@ -348,6 +450,69 @@ export class NoteIndex {
       hashtags: parsed.hashtags,
     });
     this.rebuildMaps();
+  }
+
+  /**
+   * Search for all lines containing the given @mention across all notes.
+   * Returns results grouped by note, active notes first.
+   * Done/cancelled tasks are included but flagged so the UI can filter them.
+   */
+  async searchMention(mention: string): Promise<SearchResult[]> {
+    const mentionLower = mention.toLowerCase();
+    const mentionRe = new RegExp(
+      `(?:^|(?<=\\s))${mention.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_/\\-&])`,
+      'i',
+    );
+
+    const candidates = this._entries.filter((e) =>
+      !e.isTrashed && e.mentions.some((m) => m.toLowerCase() === mentionLower)
+    );
+
+    return this.searchLines(candidates, mentionRe);
+  }
+
+  async searchHashtag(hashtag: string): Promise<SearchResult[]> {
+    const hashtagLower = hashtag.toLowerCase();
+    const hashtagRe = new RegExp(
+      `(?:^|(?<=\\s))${hashtag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_/\\-&])`,
+      'i',
+    );
+
+    const candidates = this._entries.filter((e) =>
+      !e.isTrashed && e.hashtags.some((h) => h.toLowerCase() === hashtagLower)
+    );
+
+    return this.searchLines(candidates, hashtagRe);
+  }
+
+  private async searchLines(candidates: NoteEntry[], re: RegExp): Promise<SearchResult[]> {
+    const results: SearchResult[] = [];
+
+    await Promise.all(candidates.map(async (entry) => {
+      try {
+        const text = await readTextFile(entry.relPath, { baseDir: BaseDirectory.Home });
+        const lines: SearchResult['lines'] = [];
+        text.split('\n').forEach((line, idx) => {
+          if (re.test(line)) {
+            // + is a checklist item — treated as task for now, distinct behavior TBD
+            const isDone = /^\s*[-+] \[x\] /.test(line) || /^\s*[-+] \[-\] /.test(line);
+            lines.push({ lineNum: idx + 1, text: line, isDone });
+          }
+        });
+        if (lines.length > 0) {
+          results.push({ entry, lines });
+        }
+      } catch {
+        // Skip unreadable files
+      }
+    }));
+
+    results.sort((a, b) => {
+      if (a.entry.isArchived !== b.entry.isArchived) return a.entry.isArchived ? 1 : -1;
+      return a.entry.title.localeCompare(b.entry.title);
+    });
+
+    return results;
   }
 
   /** The path where a new note would be created (Notes/ root). */

@@ -157,9 +157,12 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       }
     }
 
+    // Pre-detect tasks/lists so tab handling can skip them
+    const taskMatch = text.match(/^(\s*)([-+] \[([x\->  ])\] |(\*) |([-+]) )/);
+
     // Tab-indented paragraphs: hide tabs and use CSS padding for consistent
     // wrap indent. Only for lines that aren't headings, blockquotes, or lists.
-    if (!headingMatch && !quoteMatch) {
+    if (!headingMatch && !quoteMatch && !taskMatch) {
       const tabMatch = text.match(/^(\t+)/);
       if (tabMatch) {
         const tabCount = Math.min(tabMatch[1].length, 3);
@@ -309,12 +312,13 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
     }
 
     // Tasks and bullets: `- `, `- [ ] `, `- [x] `, `- [-] `, `- [>] `, `* `
-    // Replace the prefix with an icon/bullet widget
-    const taskMatch = text.match(/^(\s*)(- \[([x\->  ])\] |(\*) |(-) )/);
+    // + is a checklist item — rendered as task for now, distinct behavior TBD
+    // The full prefix (leading whitespace + marker) is treated as one atomic zone
+    // so cursor movement doesn't cause multiple visual transitions.
     if (taskMatch) {
-      const indent = taskMatch[1].length;
+      const indentStr = taskMatch[1];
       const prefix = taskMatch[2];
-      const prefixStart = line.from + indent;
+      const prefixStart = line.from + indentStr.length;
       const prefixEnd = prefixStart + prefix.length;
 
       let taskState: TaskState | null = null;
@@ -329,17 +333,41 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       } else if (taskMatch[4]) {
         isBullet = true;
       } else if (taskMatch[5]) {
-        // `- ` alone is an open task, unless followed by short bracket syntax
-        // like `[]`, `[x]`, `[ ]` — that's a checkbox being edited mid-keystroke
-        const afterDash = text.slice(indent + 2);
-        if (!afterDash.match(/^\[.?\]/)) {
+        const afterMarker = text.slice(indentStr.length + 2);
+        if (!afterMarker.match(/^\[.?\]/)) {
           taskState = 'open';
         }
       }
 
-      // Hanging indent for all list lines
-      decorations.push(listLineDeco.range(line.from));
+      // Atomic zone: entire whitespace + marker transitions together
+      const showingRaw = onCursorLine && cursorIn(line.from, prefixEnd);
+      const isIndented = indentStr.length > 0;
 
+      // Non-indented: padding only when widget visible (raw stays at left edge).
+      // Indented: always apply indent + list so line doesn't shift when toggling raw.
+      if (isIndented) {
+        const tabCount = Math.min((indentStr.match(/\t/g) || []).length, 3);
+        if (tabCount > 0) {
+          decorations.push(hidden.range(line.from, line.from + indentStr.length));
+          decorations.push(indentLineDecos[tabCount].range(line.from));
+        }
+        decorations.push(listLineDeco.range(line.from));
+      } else if (!showingRaw) {
+        decorations.push(listLineDeco.range(line.from));
+      }
+
+      // Marker: widget when not editing, raw when cursor in zone
+      if (!showingRaw) {
+        if (taskState) {
+          const widget = new TaskWidget(taskState);
+          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+        } else if (isBullet) {
+          const widget = new BulletWidget();
+          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
+        }
+      }
+
+      // Task state line decorations always apply (dimming, strikethrough)
       if (taskState === 'done') {
         decorations.push(doneTaskLineDeco.range(line.from));
       } else if (taskState === 'cancelled') {
@@ -350,21 +378,10 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       } else if (taskState === 'scheduled') {
         decorations.push(scheduledTaskLineDeco.range(line.from));
       }
-
-      // Widget is inline-scoped: show raw markdown when cursor is in the prefix
-      if (!(onCursorLine && cursorIn(prefixStart, prefixEnd))) {
-        if (taskState) {
-          const widget = new TaskWidget(taskState);
-          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
-        } else if (isBullet) {
-          const widget = new BulletWidget();
-          decorations.push(Decoration.replace({ widget }).range(prefixStart, prefixEnd));
-        }
-      }
     }
 
-    // @mentions: @FirstnameLastname (not preceded by alphanumeric or dot — avoids emails)
-    for (const match of text.matchAll(/(?<![a-zA-Z0-9.])(@[A-Za-z]\w+)/g)) {
+    // @mentions: @FirstnameLastname — only at word boundary (start of line or after whitespace)
+    for (const match of text.matchAll(/(?:^|(?<=\s))(@[A-Za-z_][A-Za-z0-9_/\-&]*)/g)) {
       const start = line.from + match.index!;
       const end = start + match[1].length;
       decorations.push(Decoration.mark({
@@ -373,9 +390,9 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       }).range(start, end));
     }
 
-    // #hashtags: not at line start (avoids headings), requires letter after #
-    for (const match of text.matchAll(/(?:(?<=\s)|^)(?<!^)(#[A-Za-z]\w+)/gm)) {
-      if (match.index === 0) continue; // skip if # is at line start (heading)
+    // #hashtags: requires whitespace or line start before #.
+    // Requires letter after # (avoids headings like "# Title", hex colors, bare numbers).
+    for (const match of text.matchAll(/(?:^|(?<=\s))(#[A-Za-z][A-Za-z0-9_/\-&]*)/g)) {
       const start = line.from + match.index!;
       const end = start + match[1].length;
       decorations.push(Decoration.mark({
