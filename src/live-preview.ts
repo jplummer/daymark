@@ -24,6 +24,7 @@ import {
   WidgetType,
 } from '@codemirror/view';
 import { EditorState, Range } from '@codemirror/state';
+import { syntaxTree } from '@codemirror/language';
 
 // --- Widgets for replacing syntax tokens ---
 
@@ -113,28 +114,103 @@ for (let n = 1; n <= 3; n++) {
   indentLineDecos[n] = Decoration.line({ class: `cm-live-preview-indent-${n}` });
 }
 
+// --- Build decorations from syntax tree (when available) ---
+
+function buildDecorationsFromTree(
+  state: EditorState,
+  cursorPos: number,
+  decorations: Range<Decoration>[],
+): void {
+  const tree = syntaxTree(state);
+  const doc = state.doc;
+  if (tree.length < doc.length) return;
+
+  const cursorIn = (from: number, to: number) =>
+    cursorPos >= from && cursorPos <= to;
+
+  tree.iterate({
+    enter(node) {
+      const name = node.type.name;
+      const { from, to } = node;
+
+      // ATX headings: ## Title
+      const atxMatch = /^ATXHeading(\d)$/.exec(name);
+      if (atxMatch) {
+        const level = parseInt(atxMatch[1], 10);
+        decorations.push(headingLineDecos[level].range(from));
+        return;
+      }
+
+      // Setext headings: Title\n===
+      const setextMatch = /^SetextHeading(\d)$/.exec(name);
+      if (setextMatch) {
+        const level = parseInt(setextMatch[1], 10);
+        decorations.push(headingLineDecos[level].range(from));
+        return;
+      }
+
+      // # prefix (hide or fade when cursor in range)
+      if (name === 'HeaderMark') {
+        if (cursorIn(from, to)) {
+          decorations.push(syntaxFade.range(from, to));
+        } else {
+          decorations.push(hidden.range(from, to));
+        }
+        return;
+      }
+
+      // Blockquote container: one node per line with ">"
+      if (name === 'Blockquote') {
+        let pos = from;
+        while (pos < to) {
+          const line = doc.lineAt(pos);
+          decorations.push(blockquoteLineDeco.range(line.from));
+          pos = line.to + 1;
+        }
+        return;
+      }
+
+      // > prefix (hide or fade when cursor in range)
+      if (name === 'QuoteMark') {
+        if (cursorIn(from, to)) {
+          decorations.push(syntaxFade.range(from, to));
+        } else {
+          decorations.push(hidden.range(from, to));
+        }
+      }
+    },
+  });
+}
+
 // --- Build decorations for a given state ---
 //
-// Heading font size always applied; `#` prefix inline-scoped like everything
-// else. Raw markers shown only when cursor is within the match range.
+// Uses syntax tree for headings and blockquotes when tree is complete;
+// otherwise falls back to regex. Rest remains regex-based.
 
 function buildDecorations(state: EditorState, cursorPos: number): DecorationSet {
   const decorations: Range<Decoration>[] = [];
   const doc = state.doc;
   const cursorLine = doc.lineAt(cursorPos).number;
 
-  // True when cursor is inside [from, to] (inclusive of boundaries)
   const cursorIn = (from: number, to: number) =>
     cursorPos >= from && cursorPos <= to;
+
+  const tree = syntaxTree(state);
+  const useTreeForBlocks = tree.length >= doc.length;
+  if (useTreeForBlocks) {
+    buildDecorationsFromTree(state, cursorPos, decorations);
+  }
 
   for (let i = 1; i <= doc.lines; i++) {
     const line = doc.line(i);
     const text = line.text;
     const onCursorLine = (i === cursorLine);
 
-    // Headings: font size always applied; # prefix hidden or faded
     const headingMatch = text.match(/^(#{1,6})\s/);
-    if (headingMatch) {
+    const quoteMatch = text.match(/^(> ?)/);
+
+    // Headings: only when not from tree
+    if (!useTreeForBlocks && headingMatch) {
       const level = headingMatch[1].length;
       decorations.push(headingLineDecos[level].range(line.from));
       const hashEnd = line.from + headingMatch[0].length;
@@ -145,9 +221,8 @@ function buildDecorations(state: EditorState, cursorPos: number): DecorationSet 
       }
     }
 
-    // Blockquotes: `> text`
-    const quoteMatch = text.match(/^(> ?)/);
-    if (quoteMatch) {
+    // Blockquotes: only when not from tree
+    if (!useTreeForBlocks && quoteMatch) {
       decorations.push(blockquoteLineDeco.range(line.from));
       const markerEnd = line.from + quoteMatch[0].length;
       if (onCursorLine && cursorIn(line.from, markerEnd)) {
