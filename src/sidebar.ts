@@ -125,6 +125,7 @@ function renderTree(
         icon.className = nowOpen
           ? 'ri-folder-open-line tree-item-icon'
           : 'ri-folder-line tree-item-icon';
+        persistSidebarState();
       });
 
       folder.appendChild(item);
@@ -203,6 +204,7 @@ function renderSpecialFolders(
       arrow.className = nowOpen
         ? 'ri-arrow-down-s-line tree-item-arrow'
         : 'ri-arrow-right-s-line tree-item-arrow';
+      persistSidebarState();
     });
 
     const wrapper = document.createElement('div');
@@ -393,6 +395,7 @@ export function refreshMentionsSidebar(): void {
     sectionArrow.className = mentionSectionOpen.value
       ? 'ri-arrow-down-s-line tree-item-arrow'
       : 'ri-arrow-right-s-line tree-item-arrow';
+    persistSidebarState();
   });
 
   container.appendChild(sectionHeader);
@@ -432,6 +435,7 @@ export function refreshMentionsSidebar(): void {
         groupArrow.className = nowOpen
           ? 'ri-arrow-down-s-line tree-item-arrow'
           : 'ri-arrow-right-s-line tree-item-arrow';
+        persistSidebarState();
       });
 
       sectionBody.appendChild(groupHeader);
@@ -531,6 +535,51 @@ let hashtagClickCallback: ((hashtag: string) => void) | null = null;
 const hashtagSectionOpen = { value: true };
 const openHashtagGroups = new Set<string>();
 
+// Persist sidebar open/closed state across sessions
+const SIDEBAR_STATE_KEY = 'daymark-sidebar-state';
+
+function loadSidebarState(): void {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_STATE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.openFolders)) {
+      openFolders.clear();
+      data.openFolders.forEach((p: string) => openFolders.add(p));
+    }
+    if (typeof data.mentionSectionOpen === 'boolean') mentionSectionOpen.value = data.mentionSectionOpen;
+    if (Array.isArray(data.openMentionGroups)) {
+      openMentionGroups.clear();
+      data.openMentionGroups.forEach((p: string) => openMentionGroups.add(p));
+    }
+    if (typeof data.hashtagSectionOpen === 'boolean') hashtagSectionOpen.value = data.hashtagSectionOpen;
+    if (Array.isArray(data.openHashtagGroups)) {
+      openHashtagGroups.clear();
+      data.openHashtagGroups.forEach((p: string) => openHashtagGroups.add(p));
+    }
+  } catch {
+    // Ignore parse errors or missing storage
+  }
+}
+
+function persistSidebarState(): void {
+  try {
+    const data = {
+      openFolders: [...openFolders],
+      mentionSectionOpen: mentionSectionOpen.value,
+      openMentionGroups: [...openMentionGroups],
+      hashtagSectionOpen: hashtagSectionOpen.value,
+      openHashtagGroups: [...openHashtagGroups],
+    };
+    localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore quota or storage errors
+  }
+}
+
+// Restore saved state before any sidebar is built
+loadSidebarState();
+
 export function renderHashtagsSidebar(onHashtagClick: (hashtag: string) => void): void {
   hashtagClickCallback = onHashtagClick;
   refreshHashtagsSidebar();
@@ -575,6 +624,7 @@ export function refreshHashtagsSidebar(): void {
     sectionArrow.className = hashtagSectionOpen.value
       ? 'ri-arrow-down-s-line tree-item-arrow'
       : 'ri-arrow-right-s-line tree-item-arrow';
+    persistSidebarState();
   });
 
   container.appendChild(sectionHeader);
@@ -615,6 +665,7 @@ export function refreshHashtagsSidebar(): void {
         groupArrow.className = nowOpen
           ? 'ri-arrow-down-s-line tree-item-arrow'
           : 'ri-arrow-right-s-line tree-item-arrow';
+        persistSidebarState();
       });
 
       sectionBody.appendChild(groupHeader);
