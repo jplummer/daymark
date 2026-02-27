@@ -16,13 +16,18 @@ Ordered roughly by functional priority. Items marked ⚠️ require significant 
 - **Format menu** `[Beyond Phase 6]` — Top bar icon that launches a menu for inserting or applying content types. Everything in the menu should also be typable directly in markdown. Full content type inventory:
     - Already rendering (Phase 1): headings 1–6, bold, italic, strikethrough, inline code, task, bullet point, URL.
     - Need rendering + input support: table, code block, quote, horizontal rule, note link, checklist item, `!`/`!!`/`!!!` priority markers.
-    - Need file handling: add image, add file attachment.
+    - Need file handling: add image (by URL and by attachment). NotePlan stores attachments in folders in the file store — support those later.
 - **Checklist items (`+ ` / `+ [ ]`)** `[Phase 5]` — A secondary task type using `+` as the list marker. Renders identically to tasks for now (stubbed in live-preview and note-index), but will eventually differ: checklist items are not subject to carry-forward, scheduling warnings, or "incomplete task" nagging. Good for shopping lists, packing lists, meeting agendas — anything where unchecked items don't imply missed work. Full list marker conventions:
     - `* ` — bullet (plain list item)
     - `- ` — shortcut for open task (`- [ ] `)
     - `+ ` — shortcut for checklist item (`+ [ ] `)
     - `* [ ]` — unassigned, leave alone for now
 - **Proportional fonts for body text** `[Phase 3b]` — CM6 handles variable-width text fine. Use SF Pro / system sans-serif for body, a serif like New York for headings, monospace only for code. Match the NotePlan theme feel.
+- **Raw URL autolink** `[refinement]` — Detect bare hostnames (e.g. `jonplummer.com`) as links; currently only `[text](url)` and `https?://...` are linked.
+- **Angle-bracket autolink `<url>`** `[think later]` — GFM gives us `<https://...>` as a link; we now style it. Decide whether to keep or drop (leave raw).
+- **Images** `[later]` — Support image rendering: by URL (`![alt](url)`) and by attachment. NotePlan keeps attachments in folders in the file store; add attachment support when we integrate that.
+- **Editor: next steps (in order)** — (1) Task/list styling: re-add task icons, bullet glyphs, line styling (done/cancelled/scheduled); use fade for markers, not replace. (2) Indentation: re-add tab-indent and list-indent line classes. (3) Polish: blockquote bar/padding, fine typography pass.
+- **Task line backspace (fixed)** — Root cause: `@codemirror/lang-markdown`’s `deleteMarkupBackward` (high-precedence Backspace) treats “cursor after list markup” as “delete one level of markup”. For `- [ ]` with no trailing space it doesn’t match the “replace with spaces” branch and falls through to “delete from line start to cursor”, wiping the line. Fix: `Prec.highest` Backspace in main.ts that, when the line is exactly `- [ ]` / `- [x]` / `+ [ ]` / `+ [x]` and cursor at end, runs default `deleteCharBackward` so one character is removed. With live-preview on, the earlier “wide phantom” behavior was likely the same command plus our replace decorations; with preview off, the same command produces “whole line gone”.
 
 ### @Mentions
 
@@ -38,6 +43,7 @@ Core @mention behavior (identity, click, autocomplete, sidebar, rename, delete) 
 
 ### Navigation & File Management
 
+- **Folder index for Recent** — When we implement folder indexes (sidebar folder click shows a note listing in the editor), the Recent virtual folder should have an index too: the last 10 opened non-calendar notes. We already store this list in `recentNotePaths`; plug it into the index view when that exists.
 - **Context menu and command-click to open a link in a new window** `[Phase 3a]` — Standard link UX behavior.
 - **Drag and drop in sidebar** `[Beyond Phase 6]` — Drag files into folders and folders into folders. Especially useful for tidying up the archive. ⚠️ Would need to update any wiki-links that reference moved notes.
 - **Move note while keeping it open** `[Beyond Phase 6]` — Currently you close a note, move it in the sidebar, then re-navigate. Being able to move it without closing would reduce mistakes.

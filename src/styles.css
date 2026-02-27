@@ -128,7 +128,7 @@ html, body {
   font-size: 14px;
   width: 18px;
   text-align: center;
-  color: var(--text-secondary);
+  color: #6a6a6a;
   flex-shrink: 0;
 }
 
@@ -160,7 +160,6 @@ html, body {
 }
 
 .sidebar-section-header {
-  font-weight: 500;
   color: var(--text-secondary);
 }
 
@@ -222,7 +221,18 @@ html, body {
   width: 18px;
   text-align: center;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: #6a6a6a;
+}
+
+/* Icon colors: Daily red, Weekly deeper red, folder blue, others dark grey */
+#link-daily .quick-link-icon {
+  color: var(--red);
+}
+#link-weekly .quick-link-icon {
+  color: #8b0000;
+}
+.tree-folder > .tree-item:not(.special-folder) .tree-item-icon {
+  color: var(--accent2);
 }
 
 .tree-item-label {
@@ -324,7 +334,7 @@ html, body {
 #nav-date {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 #nav-date.hidden {
@@ -332,27 +342,26 @@ html, body {
 }
 
 #nav-date button {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 13px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
   cursor: pointer;
-  line-height: 1.4;
+  padding: 0 4px;
+  line-height: 1;
 }
 
-#nav-date button:hover {
-  background: var(--bg-hover);
-}
-
-#nav-date button:active {
-  background: var(--bg-active);
+#nav-date button:hover:not(:disabled) {
+  color: var(--text-primary);
 }
 
 #nav-date button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+#nav-today i {
+  font-size: 12px;
 }
 
 #status {
@@ -443,6 +452,15 @@ html, body {
 .cm-live-preview-h5 { font-size: 1.0em; font-weight: 600; }
 .cm-live-preview-h6 { font-size: 0.93em; font-weight: 600; }
 
+/* Setext headings unsupported — override syntax highlighter so both lines look like body text */
+.cm-line.cm-live-preview-setext-unsupported,
+.cm-line.cm-live-preview-setext-unsupported span {
+  text-decoration: none !important;
+  font-size: inherit !important;
+  font-weight: normal !important;
+  color: inherit !important;
+}
+
 /* ── Faded syntax markers — visible on cursor line at low opacity ── */
 
 .cm-live-preview-syntax-fade,
@@ -519,67 +537,91 @@ html, body {
   font-size: 0.85em;
 }
 
-/* ── Live preview task icon widgets ── */
-
-/* List lines: padding pushes text (including wraps) right.
-   Widgets use position:relative to shift visually into the padding area,
-   and margin-right:-width to take zero flow space so text starts at padding.
-   The 6px accounts for CM6's default .cm-line left padding so the widget
-   lands at exactly the same position as heading/body text. */
-.cm-line.cm-live-preview-list-line {
-  padding-left: calc(1.3em + 6px);
+/* ── Live preview list/task marker ── */
+/* Marker span: fixed width so following text aligns; icon via ::before. Raw markdown hidden:
+   (1) Parent + all descendants (syntax highlighter spans) forced transparent so only the icon shows.
+   (2) font-size:0 on span so the 6 chars take no layout space (no wrap); min-height keeps box from collapsing so ::before stays visible. */
+.cm-live-preview-marker,
+.cm-live-preview-marker * {
+  color: transparent !important;
 }
-
-.cm-live-preview-task {
+.cm-live-preview-marker {
   display: inline-block;
-  width: 1.3em;
+  width: 2.5ch;
+  min-width: 2.5ch;
+  max-width: 2.5ch;
+  min-height: 1.2em;
+  overflow: hidden;
   position: relative;
-  left: -1.3em;
-  margin-right: -1.3em;
-  cursor: pointer;
+  vertical-align: baseline;
+  line-height: 1;
+  font-size: 0;
+  white-space: nowrap;
 }
-.cm-live-preview-task i {
-  font-size: 1.1em;
-  vertical-align: -0.05em;
-}
-
-.cm-live-preview-bullet {
-  display: inline-block;
-  width: 1.3em;
-  position: relative;
-  left: -1.3em;
-  margin-right: -1.3em;
-  font-size: 1.1em;
+.cm-live-preview-marker::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2.5ch;
   text-align: center;
-  color: var(--bullet);
+  pointer-events: none;
+  font-size: 1rem;
+  line-height: 1;
 }
-.cm-live-preview-task.open { color: var(--red); }
-.cm-live-preview-task.done { color: var(--text-muted); }
-.cm-live-preview-task.cancelled { color: var(--text-muted); }
-.cm-live-preview-task.scheduled { color: var(--text-muted); }
 
+/* Bullet */
+.cm-live-preview-marker-bullet::before {
+  content: '•';
+  color: var(--bullet);
+  font-size: 1.15em;
+}
+
+/* Ordered (placeholder; number would need widget or content read) */
+.cm-live-preview-marker-ordered::before {
+  content: '○';
+  color: var(--text-muted);
+  font-size: 1em;
+}
+
+/* Task icons: Remix Icon (codepoints from remixicon 4.x fonts/remixicon.css) */
+.cm-live-preview-marker-task::before {
+  font-family: 'remixicon';
+  font-style: normal;
+  -webkit-font-smoothing: antialiased;
+}
+.cm-live-preview-marker-task-open::before {
+  content: '\f3c1'; /* ri-circle-line */
+  color: var(--red);
+  font-size: 1.1em;
+}
+.cm-live-preview-marker-task-done::before {
+  content: '\eb81'; /* ri-checkbox-circle-line */
+  color: var(--text-muted);
+  font-size: 1.05em;
+}
+.cm-live-preview-marker-task-cancelled::before {
+  content: '\ee57'; /* ri-indeterminate-circle-line */
+  color: var(--text-muted);
+  font-size: 1.05em;
+}
+.cm-live-preview-marker-task-scheduled::before {
+  content: '\ea68'; /* ri-arrow-right-circle-line */
+  color: var(--text-muted);
+  font-size: 1.05em;
+}
+
+/* Line-level task state */
 .cm-live-preview-task-done-line { color: var(--text-muted); }
 .cm-live-preview-task-cancelled-line { color: var(--text-muted); }
 .cm-live-preview-task-cancelled-text { text-decoration: line-through; }
 .cm-live-preview-task-scheduled-line { color: var(--text-muted); }
 
 /* ── Live preview blockquotes ── */
+/* Layout (padding, bar) stripped for cursor stability; re-add with styling pass. */
 
 .cm-live-preview-blockquote {
   font-style: italic;
   color: var(--text-secondary);
-  padding-left: calc(1.3em + 6px) !important;
-  position: relative;
-}
-.cm-live-preview-blockquote::before {
-  content: '';
-  position: absolute;
-  left: calc(1.3em - 3px);
-  top: 3px;
-  bottom: 3px;
-  width: 4px;
-  background: #c7c4a5;
-  border-radius: 2px;
 }
 
 /* ── Tab-indented paragraphs ── */

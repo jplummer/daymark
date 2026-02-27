@@ -1,6 +1,6 @@
-import { EditorState } from '@codemirror/state';
+import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, KeyBinding } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab, deleteCharBackward } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import {
@@ -15,7 +15,17 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { autocompletion } from '@codemirror/autocomplete';
 import { livePreview } from './live-preview';
-import { initSidebar, setActiveTreeItem, refreshSidebar, renderMentionsSidebar, refreshMentionsSidebar, renderHashtagsSidebar, refreshHashtagsSidebar, TreeNode } from './sidebar';
+import {
+  initSidebar,
+  setActiveTreeItem,
+  refreshSidebar,
+  recordRecentNote,
+  renderMentionsSidebar,
+  refreshMentionsSidebar,
+  renderHashtagsSidebar,
+  refreshHashtagsSidebar,
+  TreeNode,
+} from './sidebar';
 import { noteIndex, SearchResult } from './note-index';
 import { wikiLinkCompletion, mentionCompletion, hashtagCompletion } from './completions';
 import 'remixicon/fonts/remixicon.css';
@@ -631,6 +641,21 @@ function escapeHtml(s: string): string {
 }
 
 // --- Editor extensions ---
+// Set to true to test whether the task-line backspace bug is from live-preview or elsewhere.
+const DISABLE_LIVE_PREVIEW = false;
+
+// When cursor is at end of a line that is only a task marker (e.g. "- [ ]" or "- [ ] "), lang-markdown's
+// deleteMarkupBackward deletes the whole line. Run default backward delete so one character is removed.
+const TASK_MARKER_ONLY = /^[-+] \[[ x]\]\s*$/;
+function backspaceTaskMarkerAware(view: EditorView): boolean {
+  const { state } = view;
+  const pos = state.selection.main.head;
+  const line = state.doc.lineAt(pos);
+  if (state.selection.main.empty && pos === line.to && TASK_MARKER_ONLY.test(line.text)) {
+    return deleteCharBackward(view);
+  }
+  return false;
+}
 
 const editorExtensions = [
   highlightActiveLine(),
@@ -639,6 +664,7 @@ const editorExtensions = [
   bracketMatching(),
   history(),
   keymap.of([...navKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+  Prec.highest(keymap.of([{ key: 'Backspace', run: backspaceTaskMarkerAware }])),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   EditorView.updateListener.of((update) => {
@@ -652,7 +678,7 @@ const editorExtensions = [
     override: [wikiLinkCompletion, mentionCompletion, hashtagCompletion],
     activateOnTyping: true,
   }),
-  livePreview,
+  ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview]),
   linkClickHandler,
   pasteUrlHandler,
 ];
@@ -753,6 +779,7 @@ async function navigateTo(note: NoteLocation, addToHistory = true, targetLine?: 
 
   updateToolbar(note);
   setActiveTreeItem(note.relPath);
+  recordRecentNote(note.relPath);
 
   const content = await loadFile(note.relPath);
   lastSavedContent = content;

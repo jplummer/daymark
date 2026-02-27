@@ -3,8 +3,14 @@ import { noteIndex } from './note-index';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
 
-// Folders that get separated to the bottom of the sidebar
+// Folders that get separated to the bottom of the sidebar (order: Archive, Templates, Trash last)
 const SPECIAL_FOLDERS = new Set(['@Archive', '@Templates', '@Trash']);
+const SPECIAL_FOLDER_ORDER = ['@Archive', '@Templates', '@Trash'];
+
+// Recent notes: keep last 10 opened non-calendar; show 5 when expanded
+const RECENT_NOTES_MAX = 10;
+const RECENT_NOTES_DISPLAY = 5;
+const CALENDAR_PATH_SEGMENT = '/Calendar/';
 
 export interface TreeNode {
   name: string;
@@ -64,11 +70,15 @@ async function readTree(relDir: string, excludeSpecial = false): Promise<TreeNod
   return nodes;
 }
 
-// Icon mappings for special folders
+// Recent is a virtual folder (same look/behaviour as Archive); key for open state
+const RECENT_FOLDER_KEY = '__recent__';
+
+// Icon mappings for special folders (including virtual Recent)
 const SPECIAL_FOLDER_ICONS: Record<string, string> = {
   '@Archive': 'ri-archive-line',
   '@Templates': 'ri-file-list-line',
   '@Trash': 'ri-delete-bin-line',
+  'Recent': 'ri-time-line',
 };
 
 function renderTree(
@@ -221,9 +231,11 @@ function renderSpecialFolders(
 }
 
 export function setActiveTreeItem(relPath: string): void {
-  document.querySelectorAll('#sidebar-tree .tree-item.active, #sidebar-special .tree-item.active').forEach((el) => {
-    el.classList.remove('active');
-  });
+  document
+    .querySelectorAll('#sidebar-tree .tree-item.active, #sidebar-special .tree-item.active')
+    .forEach((el) => {
+      el.classList.remove('active');
+    });
   const selector = `.tree-item[data-rel-path="${CSS.escape(relPath)}"]`;
   const item = document.querySelector(selector);
   if (item) item.classList.add('active');
@@ -232,6 +244,43 @@ export function setActiveTreeItem(relPath: string): void {
 // Persistent state across refreshes
 let sidebarNavigateCallback: ((node: TreeNode) => void) | null = null;
 const openFolders = new Set<string>();
+
+function buildRecentChildren(): TreeNode[] {
+  return recentNotePaths.slice(0, RECENT_NOTES_DISPLAY).map((relPath) => {
+    const entry = noteIndex.getEntry(relPath);
+    const filename = relPath.split('/').pop() ?? relPath;
+    const title = entry?.title ?? filename.replace(/\.txt$/, '');
+    return { name: filename, title, relPath, isDir: false };
+  });
+}
+
+async function buildSpecialNodes(notesPath: string, allEntries: { name: string; isDirectory: boolean }[]): Promise<TreeNode[]> {
+  const specialEntries = allEntries.filter((e) => e.isDirectory && SPECIAL_FOLDERS.has(e.name));
+  const byName = new Map<string, TreeNode>();
+  for (const entry of specialEntries) {
+    const childPath = `${notesPath}/${entry.name}`;
+    const children = await readTree(childPath);
+    byName.set(entry.name, {
+      name: entry.name,
+      title: entry.name.replace(/^@/, ''),
+      relPath: childPath,
+      isDir: true,
+      children,
+    });
+  }
+  const specialNodes: TreeNode[] = SPECIAL_FOLDER_ORDER.map((name) => byName.get(name)).filter(
+    (n): n is TreeNode => n != null,
+  );
+  // Recent: virtual folder (same structure as Archive), first so it appears above Archive
+  specialNodes.unshift({
+    name: 'Recent',
+    title: 'Recent',
+    relPath: RECENT_FOLDER_KEY,
+    isDir: true,
+    children: buildRecentChildren(),
+  });
+  return specialNodes;
+}
 
 async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
   const treeContainer = document.getElementById('sidebar-tree');
@@ -245,19 +294,7 @@ async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void>
     readDir(notesPath, { baseDir: BaseDirectory.Home }),
   ]);
 
-  const specialEntries = allEntries.filter((e) => e.isDirectory && SPECIAL_FOLDERS.has(e.name));
-  const specialNodes: TreeNode[] = [];
-  for (const entry of specialEntries) {
-    const childPath = `${notesPath}/${entry.name}`;
-    const children = await readTree(childPath);
-    specialNodes.push({
-      name: entry.name,
-      title: entry.name.replace(/^@/, ''),
-      relPath: childPath,
-      isDir: true,
-      children,
-    });
-  }
+  const specialNodes = await buildSpecialNodes(notesPath, allEntries);
 
   treeContainer.textContent = '';
   renderTree(treeContainer, mainTree, 0, onNavigate);
@@ -267,6 +304,20 @@ async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void>
     if (specialNodes.length > 0) {
       renderSpecialFolders(specialContainer, specialNodes, onNavigate);
     }
+  }
+}
+
+/** Rebuild and re-render only the special section (e.g. after Recent list changes). */
+export async function refreshSpecialSection(): Promise<void> {
+  if (!sidebarNavigateCallback) return;
+  const specialContainer = document.getElementById('sidebar-special');
+  if (!specialContainer) return;
+  const notesPath = `${NOTEPLAN_BASE}/Notes`;
+  const allEntries = await readDir(notesPath, { baseDir: BaseDirectory.Home });
+  const specialNodes = await buildSpecialNodes(notesPath, allEntries);
+  specialContainer.textContent = '';
+  if (specialNodes.length > 0) {
+    renderSpecialFolders(specialContainer, specialNodes, sidebarNavigateCallback);
   }
 }
 
@@ -538,6 +589,8 @@ const openHashtagGroups = new Set<string>();
 // Persist sidebar open/closed state across sessions
 const SIDEBAR_STATE_KEY = 'daymark-sidebar-state';
 
+let recentNotePaths: string[] = [];
+
 function loadSidebarState(): void {
   try {
     const raw = localStorage.getItem(SIDEBAR_STATE_KEY);
@@ -547,6 +600,7 @@ function loadSidebarState(): void {
       openFolders.clear();
       data.openFolders.forEach((p: string) => openFolders.add(p));
     }
+    if (Array.isArray(data.recentNotePaths)) recentNotePaths = data.recentNotePaths;
     if (typeof data.mentionSectionOpen === 'boolean') mentionSectionOpen.value = data.mentionSectionOpen;
     if (Array.isArray(data.openMentionGroups)) {
       openMentionGroups.clear();
@@ -566,6 +620,7 @@ function persistSidebarState(): void {
   try {
     const data = {
       openFolders: [...openFolders],
+      recentNotePaths,
       mentionSectionOpen: mentionSectionOpen.value,
       openMentionGroups: [...openMentionGroups],
       hashtagSectionOpen: hashtagSectionOpen.value,
@@ -579,6 +634,15 @@ function persistSidebarState(): void {
 
 // Restore saved state before any sidebar is built
 loadSidebarState();
+
+/** Call when a non-calendar note is opened; updates the Recent list and refreshes the special section. */
+export function recordRecentNote(relPath: string): void {
+  if (relPath.includes(CALENDAR_PATH_SEGMENT)) return;
+  const prev = recentNotePaths.filter((p) => p !== relPath);
+  recentNotePaths = [relPath, ...prev].slice(0, RECENT_NOTES_MAX);
+  persistSidebarState();
+  refreshSpecialSection();
+}
 
 export function renderHashtagsSidebar(onHashtagClick: (hashtag: string) => void): void {
   hashtagClickCallback = onHashtagClick;
