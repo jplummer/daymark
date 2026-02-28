@@ -187,6 +187,23 @@ function updateToolbar(note: NoteLocation) {
   document.getElementById('link-weekly')?.classList.toggle('active', note.type === 'weekly');
 }
 
+// Re-evaluate the today button and daily link indicator without a full navigation.
+// Called periodically so the button activates if midnight passes while the app is open.
+function refreshTodayButton() {
+  if (!currentNote) return;
+  const todayBtn = document.getElementById('nav-today') as HTMLButtonElement | null;
+  if (todayBtn && currentNote.type === 'daily' && currentNote.date) {
+    todayBtn.disabled = isSameDay(currentNote.date, new Date());
+  }
+  if (todayBtn && currentNote.type === 'weekly' && currentNote.weekInfo) {
+    const currentWeek = getISOWeek(new Date());
+    todayBtn.disabled = !!(currentNote.weekInfo.year === currentWeek.year
+      && currentNote.weekInfo.week === currentWeek.week);
+  }
+  document.getElementById('link-daily')?.classList.toggle('active',
+    currentNote.type === 'daily' && !!currentNote.date && isSameDay(currentNote.date, new Date()));
+}
+
 function updateHistoryButtons() {
   const backBtn = document.getElementById('nav-back') as HTMLButtonElement | null;
   const fwdBtn = document.getElementById('nav-forward') as HTMLButtonElement | null;
@@ -1020,6 +1037,9 @@ async function init() {
   renderHashtagsSidebar((hashtag) => showTagSearch(hashtag));
 
   pollNotesDirectory();
+
+  // Check once per minute whether "today" has changed (e.g. after midnight)
+  setInterval(refreshTodayButton, 60_000);
 }
 
 init().catch((err) => {
