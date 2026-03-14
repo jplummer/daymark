@@ -1,6 +1,6 @@
 import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, KeyBinding } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab, deleteCharBackward } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import {
@@ -14,7 +14,7 @@ import { readTextFile, writeTextFile, readDir, BaseDirectory } from '@tauri-apps
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { autocompletion } from '@codemirror/autocomplete';
-import { livePreview } from './live-preview';
+import { livePreview, taskMarkerClickHandler, isListLine } from './live-preview';
 import {
   initSidebar,
   setActiveTreeItem,
@@ -185,23 +185,6 @@ function updateToolbar(note: NoteLocation) {
   document.getElementById('link-daily')?.classList.toggle('active',
     note.type === 'daily' && !!note.date && isSameDay(note.date, new Date()));
   document.getElementById('link-weekly')?.classList.toggle('active', note.type === 'weekly');
-}
-
-// Re-evaluate the today button and daily link indicator without a full navigation.
-// Called periodically so the button activates if midnight passes while the app is open.
-function refreshTodayButton() {
-  if (!currentNote) return;
-  const todayBtn = document.getElementById('nav-today') as HTMLButtonElement | null;
-  if (todayBtn && currentNote.type === 'daily' && currentNote.date) {
-    todayBtn.disabled = isSameDay(currentNote.date, new Date());
-  }
-  if (todayBtn && currentNote.type === 'weekly' && currentNote.weekInfo) {
-    const currentWeek = getISOWeek(new Date());
-    todayBtn.disabled = !!(currentNote.weekInfo.year === currentWeek.year
-      && currentNote.weekInfo.week === currentWeek.week);
-  }
-  document.getElementById('link-daily')?.classList.toggle('active',
-    currentNote.type === 'daily' && !!currentNote.date && isSameDay(currentNote.date, new Date()));
 }
 
 function updateHistoryButtons() {
@@ -661,17 +644,105 @@ function escapeHtml(s: string): string {
 // Set to true to test whether the task-line backspace bug is from live-preview or elsewhere.
 const DISABLE_LIVE_PREVIEW = false;
 
-// When cursor is at end of a line that is only a task marker (e.g. "- [ ]" or "- [ ] "), lang-markdown's
-// deleteMarkupBackward deletes the whole line. Run default backward delete so one character is removed.
-const TASK_MARKER_ONLY = /^[-+] \[[ x]\]\s*$/;
-function backspaceTaskMarkerAware(view: EditorView): boolean {
+// When cursor is at end of a line that is only a start-of-line marker (task, bullet, ordered, checklist, or blockquote),
+// Backspace clears the whole line to empty.
+const TASK_MARKER_ONLY = /^\s*[-+] \[[x\-> ]\]\s*$/;
+const BULLET_DASH_PLUS_ONLY = /^\s*[-+]\s*$/;
+const BULLET_ASTERISK_ONLY = /^\s*\*\s*$/;
+const BLOCKQUOTE_ONLY = /^\s*>\s*$/;
+const ORDERED_LIST_ONLY = /^\s*\d+[.)]\s*$/;
+
+function backspaceMarkerLineAware(view: EditorView): boolean {
   const { state } = view;
   const pos = state.selection.main.head;
   const line = state.doc.lineAt(pos);
-  if (state.selection.main.empty && pos === line.to && TASK_MARKER_ONLY.test(line.text)) {
-    return deleteCharBackward(view);
+  if (!state.selection.main.empty || pos !== line.to) return false;
+  const text = line.text;
+  const isMarkerOnly =
+    TASK_MARKER_ONLY.test(text) ||
+    BULLET_DASH_PLUS_ONLY.test(text) ||
+    BULLET_ASTERISK_ONLY.test(text) ||
+    BLOCKQUOTE_ONLY.test(text) ||
+    ORDERED_LIST_ONLY.test(text);
+  if (!isMarkerOnly) return false;
+  view.dispatch({ changes: { from: line.from, to: line.to } });
+  return true;
+}
+
+// Heading line: optional leading whitespace, then 1–6 #, then space (ATX heading).
+const HEADING_LINE = /^\s*#{1,6}\s/;
+
+/** Tab on a heading or list line inserts indent at line start (so it works when markers are hidden or replaced). */
+function tabOnHeadingOrListLine(view: EditorView): boolean {
+  const { state } = view;
+  if (!state.selection.main.empty) return false;
+  const head = state.selection.main.head;
+  const line = state.doc.lineAt(head);
+  const lineNumber = line.number;
+  const isHeading = HEADING_LINE.test(line.text);
+  const isList = isListLine(state, lineNumber);
+  if (!isHeading && !isList) return false;
+  const unit = state.facet(indentUnit);
+  view.dispatch({
+    changes: { from: line.from, to: line.from, insert: unit },
+    selection: { anchor: line.from + unit.length },
+  });
+  return true;
+}
+
+/** True if the line is only a list/blockquote marker with no text (for Enter: clear line). */
+function isMarkerOnlyLine(text: string): boolean {
+  return (
+    TASK_MARKER_ONLY.test(text) ||
+    BULLET_DASH_PLUS_ONLY.test(text) ||
+    BULLET_ASTERISK_ONLY.test(text) ||
+    BLOCKQUOTE_ONLY.test(text) ||
+    ORDERED_LIST_ONLY.test(text)
+  );
+}
+
+/** Enter: if line is marker-only, clear it (remove marker, cursor stays). Else continue list/blockquote or insert newline. */
+function enterListAndBlockquoteAware(view: EditorView): boolean {
+  const { state } = view;
+  if (!state.selection.main.empty) return false;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const text = line.text;
+  const leadingMatch = text.match(/^(\s*)/);
+  const leading = leadingMatch ? leadingMatch[1] : '';
+
+  if (isMarkerOnlyLine(text)) {
+    view.dispatch({ changes: { from: line.from, to: line.to }, selection: { anchor: line.from } });
+    return true;
   }
-  return false;
+
+  const trimmed = text.trimStart();
+  let insert: string;
+
+  if (trimmed.startsWith('> ')) {
+    insert = '\n' + leading + '> ';
+  } else {
+    const taskBulletMatch = text.match(/^(\s*)([-+] \[[x\->  ]\] |(\*) |([-+]) )/);
+    const orderedMatch = text.match(/^(\s*)(\d+)([.)])\s+/);
+    if (taskBulletMatch) {
+      const marker = taskBulletMatch[2];
+      if (marker === '* ') {
+        insert = '\n' + leading + '* ';
+      } else if (marker.startsWith('+ ')) {
+        insert = '\n' + leading + '+ [ ] ';
+      } else {
+        insert = '\n' + leading + '- [ ] ';
+      }
+    } else if (orderedMatch) {
+      const num = parseInt(orderedMatch[2], 10);
+      const delim = orderedMatch[3];
+      insert = '\n' + leading + String(num + 1) + delim + ' ';
+    } else {
+      insert = '\n';
+    }
+  }
+
+  view.dispatch(state.replaceSelection(insert));
+  return true;
 }
 
 const editorExtensions = [
@@ -681,7 +752,11 @@ const editorExtensions = [
   bracketMatching(),
   history(),
   keymap.of([...navKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]),
-  Prec.highest(keymap.of([{ key: 'Backspace', run: backspaceTaskMarkerAware }])),
+  Prec.high(keymap.of([{ key: 'Tab', run: tabOnHeadingOrListLine }])),
+  Prec.highest(keymap.of([
+    { key: 'Enter', run: enterListAndBlockquoteAware },
+    { key: 'Backspace', run: backspaceMarkerLineAware },
+  ])),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   EditorView.updateListener.of((update) => {
@@ -695,7 +770,7 @@ const editorExtensions = [
     override: [wikiLinkCompletion, mentionCompletion, hashtagCompletion],
     activateOnTyping: true,
   }),
-  ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview]),
+  ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview, Prec.high(taskMarkerClickHandler)]),
   linkClickHandler,
   pasteUrlHandler,
 ];
@@ -1037,9 +1112,6 @@ async function init() {
   renderHashtagsSidebar((hashtag) => showTagSearch(hashtag));
 
   pollNotesDirectory();
-
-  // Check once per minute whether "today" has changed (e.g. after midnight)
-  setInterval(refreshTodayButton, 60_000);
 }
 
 init().catch((err) => {

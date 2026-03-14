@@ -51,6 +51,8 @@ class MarkerWidget extends WidgetType {
     readonly taskState?: TaskState,
     readonly taskBoxFrom?: number,
     readonly taskBoxTo?: number,
+    /** For ordered lists: label to show (e.g. "1." or "10)"). */
+    readonly orderedLabel?: string,
   ) {
     super();
   }
@@ -95,7 +97,7 @@ class MarkerWidget extends WidgetType {
       span.textContent = '\u2022'; /* • */
     } else {
       span.classList.add('cm-live-preview-marker-ordered');
-      span.textContent = '\u25CB'; /* ○ */
+      span.textContent = this.orderedLabel ?? '\u25CB'; /* number or ○ */
     }
     return span;
   }
@@ -105,7 +107,8 @@ class MarkerWidget extends WidgetType {
       this.kind === other.kind &&
       this.taskState === other.taskState &&
       this.taskBoxFrom === other.taskBoxFrom &&
-      this.taskBoxTo === other.taskBoxTo
+      this.taskBoxTo === other.taskBoxTo &&
+      this.orderedLabel === other.orderedLabel
     );
   }
 }
@@ -139,6 +142,8 @@ for (let level = 1; level <= 6; level++) {
 }
 
 const blockquoteLineDeco = Decoration.line({ class: 'cm-live-preview-blockquote' });
+/** Set to true to log every blockquote application (path, line number, line text) to console. */
+const DEBUG_BLOCKQUOTE = true;
 const setextUnsupportedLineDeco = Decoration.line({ class: 'cm-live-preview-setext-unsupported' });
 
 const listLineDeco = Decoration.line({ class: 'cm-live-preview-list-line' });
@@ -170,6 +175,8 @@ export interface ResolvedListLine {
   /** For tasks: doc range of the "[ ]" / "[x]" etc. box (for click-to-toggle). */
   taskBoxFrom?: number;
   taskBoxTo?: number;
+  /** For ordered lists: marker text to show in widget (e.g. "1." or "10)"). */
+  orderedMarkerText?: string;
 }
 
 function buildDecorationsFromTree(
@@ -249,14 +256,20 @@ function buildDecorationsFromTree(
         while (pos < to) {
           const line = doc.lineAt(pos);
           const lineText = line.text;
+          if (lineText.trim() === '') {
+            pos = line.to + 1;
+            continue;
+          }
           const qMatch = lineText.match(/^(\s*)(> ?)/);
-          if (qMatch && qMatch[2]) {
+          const looksLikeBlockquote = /^\s*> \s*/.test(lineText) || (lineText.trimStart().startsWith('> ') && lineText.trim().length > 0);
+          if (qMatch && qMatch[2] && lineText.trim().length > 0 && looksLikeBlockquote) {
             // Decorate only after space: require "> " (not lone ">" at EOL)
             const isBlockquote = qMatch[2] === '> ';
             if (!isBlockquote) {
               pos = line.to + 1;
               continue;
             }
+            if (DEBUG_BLOCKQUOTE) console.log('[live-preview] blockquote (tree) line', line.number, ':', JSON.stringify(lineText));
             decorations.push(blockquoteLineDeco.range(line.from));
             const leadingLen = qMatch[1].length;
             if (leadingLen > 0) {
@@ -451,7 +464,10 @@ function buildDecorationsFromTree(
       kind = 'ordered';
     }
 
-    listLineMap.set(lineFrom, { kind, taskState, markerFrom: listMark.from, markerTo, taskBoxFrom, taskBoxTo });
+    const orderedMarkerText = kind === 'ordered'
+      ? doc.sliceString(listMark.from, listMark.to).trim()
+      : undefined;
+    listLineMap.set(lineFrom, { kind, taskState, markerFrom: listMark.from, markerTo, taskBoxFrom, taskBoxTo, orderedMarkerText });
   }
 }
 
@@ -462,6 +478,8 @@ function buildDecorationsFromTree(
 // regex for those when tree is incomplete. Wiki-links, @mentions, #hashtags remain regex-only.
 
 const TASK_BULLET_REGEX = /^(\s*)([-+] \[([x\->  ])\] |(\*) |([-+]) )/;
+/** Ordered list: leading whitespace + "1. " or "2) " etc. */
+const ORDERED_LIST_REGEX = /^(\s*)(\d+[.)]\s+)/;
 
 function resolveListLineFromRegex(line: { from: number; text: string }, taskMatch: RegExpMatchArray): ResolvedListLine {
   const leadLen = taskMatch[1].length;
@@ -486,6 +504,21 @@ function resolveListLineFromRegex(line: { from: number; text: string }, taskMatc
     return { kind: 'task', taskState: 'open', markerFrom, markerTo, taskBoxFrom, taskBoxTo };
   }
   return { kind: 'bullet', markerFrom, markerTo };
+}
+
+function resolveOrderedListFromRegex(line: { from: number; text: string }, orderedMatch: RegExpMatchArray): ResolvedListLine {
+  const leadLen = orderedMatch[1].length;
+  const markerLen = orderedMatch[2].length;
+  const markerFrom = line.from + leadLen;
+  const markerTo = line.from + leadLen + markerLen;
+  const orderedMarkerText = orderedMatch[2].trim();
+  return { kind: 'ordered', markerFrom, markerTo, orderedMarkerText };
+}
+
+/** True if the line looks like a list (ordered, task, or bullet). Used by main for Tab-at-line-start. */
+export function isListLine(state: EditorState, lineNumber: number): boolean {
+  const line = state.doc.line(lineNumber);
+  return TASK_BULLET_REGEX.test(line.text) || ORDERED_LIST_REGEX.test(line.text);
 }
 
 /** When true, skip tree and use only regex/line iteration (avoids stale tree positions right after doc change). */
@@ -554,8 +587,9 @@ function buildDecorations(
       }
     }
 
-    // Blockquotes: only when not from tree. Decorate only after space: "> " (not ">text" or lone ">").
-    if (!useTreeForBlocks && quoteMatch && quoteMatch[2]) {
+    // Blockquotes: only when not from tree. Decorate only after space: "> " (not ">text" or lone ">"). Never apply to blank lines.
+    const looksLikeBlockquoteLine = /^\s*> \s*/.test(text) || (text.trimStart().startsWith('> ') && text.trim().length > 0);
+    if (!useTreeForBlocks && line.text.trim().length > 0 && looksLikeBlockquoteLine && quoteMatch && quoteMatch[2]) {
       const quoteLeading = quoteMatch[1];
       const quoteMarker = quoteMatch[2];
       // Decorate only after space: require "> " (not lone ">" at EOL)
@@ -564,6 +598,7 @@ function buildDecorations(
         // ">foo" etc. — skip so we don't apply blockquote prematurely
       } else {
       const leadingLen = quoteLeading.length;
+      if (DEBUG_BLOCKQUOTE) console.log('[live-preview] blockquote (regex) line', i, ':', JSON.stringify(text));
       decorations.push(blockquoteLineDeco.range(line.from));
       if (leadingLen > 0) {
         const leadingPart = quoteLeading;
@@ -580,9 +615,10 @@ function buildDecorations(
     }
 
     const taskMatch = text.match(TASK_BULLET_REGEX);
+    const orderedMatch = text.match(ORDERED_LIST_REGEX);
 
     // Tab-indented plain paragraphs: indent + hidden so block indent and wrap align (same as list/blockquote).
-    if (!headingMatch && !quoteMatch && !taskMatch && !listLineMap.has(line.from)) {
+    if (!headingMatch && !quoteMatch && !taskMatch && !orderedMatch && !listLineMap.has(line.from)) {
       const paraLeading = text.match(/^(\s+)/);
       if (paraLeading && line.text.trim().length > 0) {
         const leadingLen = paraLeading[1].length;
@@ -598,7 +634,8 @@ function buildDecorations(
     }
 
     // List/task/ordered line: line deco + replace marker range with inline widget (CM6-native; range is atomic).
-    const resolved = listLineMap.get(line.from) ?? (taskMatch ? resolveListLineFromRegex(line, taskMatch) : null);
+    const resolved = listLineMap.get(line.from)
+      ?? (taskMatch ? resolveListLineFromRegex(line, taskMatch) : orderedMatch ? resolveOrderedListFromRegex(line, orderedMatch) : null);
     if (resolved) {
       decorations.push(listLineDeco.range(line.from));
       if (resolved.kind === 'task' && resolved.taskState === 'done') decorations.push(doneTaskLineDeco.range(line.from));
@@ -622,20 +659,26 @@ function buildDecorations(
       }
 
       // Marker replace: only the marker (after leading whitespace), so we don't overlap with hidden.
+      // Ordered list: do not replace — leave "1." / "10)" in the doc so the user can edit numbers; just fade the marker.
       const markerFrom = leadingLen > 0 ? line.from + leadingLen : resolved.markerFrom;
       const markerTo = resolved.markerTo;
       if (markerFrom < markerTo && markerFrom >= line.from && markerTo <= line.to && markerTo <= doc.length) {
-        decorations.push(
-          Decoration.replace({
-            widget: new MarkerWidget(
-            resolved.kind,
-            resolved.taskState,
-            resolved.taskBoxFrom,
-            resolved.taskBoxTo,
-          ),
-            inclusive: false,
-          }).range(markerFrom, markerTo),
-        );
+        if (resolved.kind === 'ordered') {
+          decorations.push(syntaxFade.range(markerFrom, markerTo));
+        } else {
+          decorations.push(
+            Decoration.replace({
+              widget: new MarkerWidget(
+              resolved.kind,
+              resolved.taskState,
+              resolved.taskBoxFrom,
+              resolved.taskBoxTo,
+              resolved.orderedMarkerText,
+            ),
+              inclusive: false,
+            }).range(markerFrom, markerTo),
+          );
+        }
       }
     }
 
