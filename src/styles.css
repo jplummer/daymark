@@ -32,6 +32,10 @@
   --scrollbar: #c0c0c0;
   --scrollbar-hover: #a0a0a0;
   --bullet: #736B1E;
+  /* Live preview layout: n = marker width; content start = line-left + n; indent levels = multiples of n; zero-level list/blockquote and first-level indent wrap to same place. */
+  --live-preview-line-left: 6px;
+  --live-preview-marker-width: 2.5ch;
+  --live-preview-indent-step: var(--live-preview-marker-width);
   --resize-handle: #BF1B1B;
 }
 
@@ -468,6 +472,12 @@ html, body {
   color: var(--syntax-fade) !important;
 }
 
+/* Heading lines: ## faded when cursor on line (when off line ## are hidden by replace decoration) */
+.cm-line[class*="cm-live-preview-h"] .cm-live-preview-syntax-fade,
+.cm-line[class*="cm-live-preview-h"] .cm-live-preview-syntax-fade span {
+  color: var(--syntax-fade) !important;
+}
+
 /* ── Live preview inline styles ── */
 
 .cm-live-preview-bold { font-weight: 700; }
@@ -537,77 +547,46 @@ html, body {
   font-size: 0.85em;
 }
 
-/* ── Live preview list/task marker ── */
-/* Marker span: fixed width so following text aligns; icon via ::before. Raw markdown hidden:
-   (1) Parent + all descendants (syntax highlighter spans) forced transparent so only the icon shows.
-   (2) font-size:0 on span so the 6 chars take no layout space (no wrap); min-height keeps box from collapsing so ::before stays visible. */
-.cm-live-preview-marker,
-.cm-live-preview-marker * {
-  color: transparent !important;
+/* ── Live preview list/task marker (replace widget) ── */
+/* Content start = --live-preview-line-left + --live-preview-marker-width. Wrapping aligns to that. */
+.cm-editor .cm-line.cm-live-preview-list-line {
+  padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width));
 }
-.cm-live-preview-marker {
+.cm-live-preview-marker-widget {
   display: inline-block;
-  width: 2.5ch;
-  min-width: 2.5ch;
-  max-width: 2.5ch;
-  min-height: 1.2em;
-  overflow: hidden;
-  position: relative;
-  vertical-align: baseline;
-  line-height: 1;
-  font-size: 0;
-  white-space: nowrap;
-}
-.cm-live-preview-marker::before {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 2.5ch;
+  width: var(--live-preview-marker-width);
+  min-width: var(--live-preview-marker-width);
+  margin-left: calc(-1 * var(--live-preview-marker-width));
+  box-sizing: border-box;
   text-align: center;
-  pointer-events: none;
-  font-size: 1rem;
+  vertical-align: middle;
   line-height: 1;
+  pointer-events: none;
+}
+/* Task icons are clickable to toggle [ ] <-> [x] */
+.cm-live-preview-marker-widget[data-task-box-from] {
+  pointer-events: auto;
 }
 
-/* Bullet */
-.cm-live-preview-marker-bullet::before {
-  content: '•';
+.cm-live-preview-marker-bullet {
   color: var(--bullet);
-  font-size: 1.15em;
+  font-size: 1.1em;
+  vertical-align: middle;
 }
 
-/* Ordered (placeholder; number would need widget or content read) */
-.cm-live-preview-marker-ordered::before {
-  content: '○';
+.cm-live-preview-marker-ordered {
   color: var(--text-muted);
   font-size: 1em;
 }
 
-/* Task icons: Remix Icon (codepoints from remixicon 4.x fonts/remixicon.css) */
-.cm-live-preview-marker-task::before {
-  font-family: 'remixicon';
-  font-style: normal;
-  -webkit-font-smoothing: antialiased;
-}
-.cm-live-preview-marker-task-open::before {
-  content: '\f3c1'; /* ri-circle-line */
-  color: var(--red);
+/* Task: Remix Icon <i> inside span; color by state */
+.cm-live-preview-marker-task-open i { color: var(--red); }
+.cm-live-preview-marker-task-done i,
+.cm-live-preview-marker-task-cancelled i,
+.cm-live-preview-marker-task-scheduled i { color: var(--text-muted); }
+.cm-live-preview-marker-widget i {
   font-size: 1.1em;
-}
-.cm-live-preview-marker-task-done::before {
-  content: '\eb81'; /* ri-checkbox-circle-line */
-  color: var(--text-muted);
-  font-size: 1.05em;
-}
-.cm-live-preview-marker-task-cancelled::before {
-  content: '\ee57'; /* ri-indeterminate-circle-line */
-  color: var(--text-muted);
-  font-size: 1.05em;
-}
-.cm-live-preview-marker-task-scheduled::before {
-  content: '\ea68'; /* ri-arrow-right-circle-line */
-  color: var(--text-muted);
-  font-size: 1.05em;
+  vertical-align: middle;
 }
 
 /* Line-level task state */
@@ -617,23 +596,44 @@ html, body {
 .cm-live-preview-task-scheduled-line { color: var(--text-muted); }
 
 /* ── Live preview blockquotes ── */
-/* Layout (padding, bar) stripped for cursor stability; re-add with styling pass. */
+/* Same content start as list: --live-preview-line-left + --live-preview-marker-width. "> " replaced so text starts there. */
 
-.cm-live-preview-blockquote {
+.cm-editor .cm-line.cm-live-preview-blockquote {
+  position: relative;
   font-style: italic;
   color: var(--text-secondary);
+  padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width));
+}
+.cm-live-preview-blockquote::before {
+  content: '';
+  position: absolute;
+  /* Just to the left of text: content starts at line-left + marker-width; bar ends 8px before that */
+  left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) - 3px - 8px);
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  pointer-events: none;
+}
+.cm-editor .cm-line.cm-live-preview-blockquote.cm-live-preview-indent-1 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-blockquote.cm-live-preview-indent-2 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + 2 * var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-blockquote.cm-live-preview-indent-3 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + 3 * var(--live-preview-indent-step)); }
+/* Tabs in blockquote/list: fixed width so typing Tab doesn't create a huge gap (matches one indent level). */
+.cm-line.cm-live-preview-blockquote,
+.cm-line.cm-live-preview-list-line {
+  tab-size: 4;
 }
 
 /* ── Tab-indented paragraphs ── */
+.cm-editor .cm-line.cm-live-preview-indent-1 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-indent-2 { padding-left: calc(var(--live-preview-line-left) + 2 * var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-indent-3 { padding-left: calc(var(--live-preview-line-left) + 3 * var(--live-preview-indent-step)); }
 
-.cm-line.cm-live-preview-indent-1 { padding-left: calc(2em + 6px); }
-.cm-line.cm-live-preview-indent-2 { padding-left: calc(4em + 6px); }
-.cm-line.cm-live-preview-indent-3 { padding-left: calc(6em + 6px); }
-
-/* Indented list items: combine indent + list widget padding */
-.cm-line.cm-live-preview-list-line.cm-live-preview-indent-1 { padding-left: calc(2em + 1.3em + 6px); }
-.cm-line.cm-live-preview-list-line.cm-live-preview-indent-2 { padding-left: calc(4em + 1.3em + 6px); }
-.cm-line.cm-live-preview-list-line.cm-live-preview-indent-3 { padding-left: calc(6em + 1.3em + 6px); }
+/* Indented list/blockquote: same content start as non-indented list + N steps */
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-1 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-2 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + 2 * var(--live-preview-indent-step)); }
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-3 { padding-left: calc(var(--live-preview-line-left) + var(--live-preview-marker-width) + 3 * var(--live-preview-indent-step)); }
 
 /* ── Scrollbar styling ── */
 
