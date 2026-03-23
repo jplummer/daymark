@@ -179,3 +179,10 @@ Observed during Phase 1 (Setapp version).
 - **Distinction:** `<YYYY-MM-DD` = non-synced copy pushed by scheduling. `^blockid` = synced copy. A line can have block ID and schedule date; if it has block ID it won't have `<date`.
 - **Block ID assignment:** Purely file-based. NotePlan discovers matching `^blockid` strings by scanning files; no internal database. We can generate our own block IDs and NotePlan will honor them.
 - **Non-task synced lines:** Synced lines work on any line (not just tasks). Same `^blockid` mechanism.
+
+### CM6: ordered list `Four3)` bug
+
+- **Symptom:** After paste / Enter / Shift-Tab on nested ordered lists, typing body text produced `Four3) ` (body before the marker).
+- **Cause:** `Decoration.replace` on the marker is atomic; the caret can land at **markerFrom** (first digit). While `cursorInsideOrderedMarker` shows the raw marker for editing, **input still inserts before that digit** — selection `dispatch` after Tab/Shift-Tab/Enter was not enough to stop it.
+- **Mitigation:** `orderedListBodyInsertFilter` in `live-preview.ts` (`EditorState.transactionFilter`) rewrites pure inserts that start at `markerFrom` to insert at `markerTo` instead, and shifts the mapped selection by `(markerTo - markerFrom)`. Single ASCII digit inserts are not redirected so changing the list number at the first digit still works.
+- **Indent unit:** Inserts that match `indentUnit` (e.g. a single tab from Tab on a list line) are not redirected, because with no leading whitespace `markerFrom` equals `line.from` and redirecting would move structural indent after the marker. `tabOnHeadingOrListLine` also tags its insert with `userEvent: 'input.indent'` (same as CodeMirror’s `indentMore`); the filter skips redirect when `tr.isUserEvent('input.indent')` so Tab still works if string equality ever mismatches.

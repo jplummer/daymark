@@ -14,7 +14,16 @@ import { readTextFile, writeTextFile, readDir, BaseDirectory } from '@tauri-apps
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { autocompletion } from '@codemirror/autocomplete';
-import { livePreview, taskMarkerClickHandler, isListLine } from './live-preview';
+import {
+  livePreview,
+  taskMarkerClickHandler,
+  isListLine,
+  renumberOrderedListAfterIndent,
+  getOrderedMarkerEnd,
+  getNextOrderedMarkerInRun,
+  ORDERED_LIST_REGEX,
+  orderedListBodyInsertFilter,
+} from './live-preview';
 import {
   initSidebar,
   setActiveTreeItem,
@@ -683,10 +692,57 @@ function tabOnHeadingOrListLine(view: EditorView): boolean {
   const isList = isListLine(state, lineNumber);
   if (!isHeading && !isList) return false;
   const unit = state.facet(indentUnit);
+  const isOrdered = ORDERED_LIST_REGEX.test(line.text);
   view.dispatch({
     changes: { from: line.from, to: line.from, insert: unit },
     selection: { anchor: line.from + unit.length },
+    userEvent: 'input.indent',
   });
+  if (isOrdered) {
+    renumberOrderedListAfterIndent(view, lineNumber);
+    const afterMarker = getOrderedMarkerEnd(view.state, lineNumber);
+    if (afterMarker !== null) view.dispatch({ selection: { anchor: afterMarker } });
+  }
+  return true;
+}
+
+/** Shift-Tab on a heading or list line removes one indent unit at line start, then renumbers ordered list if applicable. */
+function shiftTabOnHeadingOrListLine(view: EditorView): boolean {
+  const { state } = view;
+  if (!state.selection.main.empty) return false;
+  const head = state.selection.main.head;
+  const line = state.doc.lineAt(head);
+  const lineNumber = line.number;
+  const isHeading = HEADING_LINE.test(line.text);
+  const isList = isListLine(state, lineNumber);
+  if (!isHeading && !isList) return false;
+  const leadingMatch = line.text.match(/^(\s+)/);
+  const leading = leadingMatch ? leadingMatch[1] : '';
+  if (leading.length === 0) return false;
+  const unit = state.facet(indentUnit);
+  let removeLen = 0;
+  if (unit === '\t' && leading.startsWith('\t')) {
+    removeLen = 1;
+  } else if (leading.length >= 4 && /^ {1,4}$/.test(leading.slice(0, 4))) {
+    removeLen = Math.min(4, leading.length);
+  } else if (leading.startsWith(unit)) {
+    removeLen = unit.length;
+  }
+  if (removeLen === 0) return false;
+  const isOrdered = ORDERED_LIST_REGEX.test(line.text);
+  const outdent = { from: line.from, to: line.from + removeLen, insert: '' };
+  // Two steps: one combined ChangeSet of outdent + mapped renumber was corrupting the doc (CM flush/order).
+  // Renumber uses view.state after outdent so from/to are correct.
+  // Do not set selection here: TransactionSpec.selection is in *post-change* coords; old `head` would be wrong
+  // (caret past line/doc end → broken selection, invisible caret, no typing).
+  view.dispatch({ changes: outdent });
+  if (isOrdered) {
+    renumberOrderedListAfterIndent(view, lineNumber);
+    const afterMarker = getOrderedMarkerEnd(view.state, lineNumber);
+    // Replace decorations on the marker are atomic; selection can snap to the *start* of the replaced
+    // range (before the digits). Typing then inserts before "3)" → "Four3) ". Always pin after marker.
+    if (afterMarker !== null) view.dispatch({ selection: { anchor: afterMarker } });
+  }
   return true;
 }
 
@@ -717,12 +773,13 @@ function enterListAndBlockquoteAware(view: EditorView): boolean {
 
   const trimmed = text.trimStart();
   let insert: string;
+  let orderedContinuation = false;
 
   if (trimmed.startsWith('> ')) {
     insert = '\n' + leading + '> ';
   } else {
     const taskBulletMatch = text.match(/^(\s*)([-+] \[[x\->  ]\] |(\*) |([-+]) )/);
-    const orderedMatch = text.match(/^(\s*)(\d+)([.)])\s+/);
+    const orderedMatch = text.match(ORDERED_LIST_REGEX);
     if (taskBulletMatch) {
       const marker = taskBulletMatch[2];
       if (marker === '* ') {
@@ -733,26 +790,37 @@ function enterListAndBlockquoteAware(view: EditorView): boolean {
         insert = '\n' + leading + '- [ ] ';
       }
     } else if (orderedMatch) {
-      const num = parseInt(orderedMatch[2], 10);
-      const delim = orderedMatch[3];
-      insert = '\n' + leading + String(num + 1) + delim + ' ';
+      orderedContinuation = true;
+      const nextInRun = getNextOrderedMarkerInRun(state, line.number);
+      const num = nextInRun?.num ?? parseInt(orderedMatch[2], 10) + 1;
+      const delim = nextInRun?.delim ?? orderedMatch[3] ?? '.';
+      insert = '\n' + leading + String(num) + delim + ' ';
     } else {
       insert = '\n';
     }
   }
 
   view.dispatch(state.replaceSelection(insert));
+  if (orderedContinuation && ORDERED_LIST_REGEX.test(view.state.doc.lineAt(view.state.selection.main.head).text)) {
+    const ln = view.state.doc.lineAt(view.state.selection.main.head).number;
+    const afterMarker = getOrderedMarkerEnd(view.state, ln);
+    if (afterMarker !== null) view.dispatch({ selection: { anchor: afterMarker } });
+  }
   return true;
 }
 
 const editorExtensions = [
+  orderedListBodyInsertFilter,
   highlightActiveLine(),
   indentOnInput(),
   indentUnit.of('\t'),
   bracketMatching(),
   history(),
   keymap.of([...navKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]),
-  Prec.high(keymap.of([{ key: 'Tab', run: tabOnHeadingOrListLine }])),
+  Prec.high(keymap.of([
+    { key: 'Tab', run: tabOnHeadingOrListLine },
+    { key: 'Shift-Tab', run: shiftTabOnHeadingOrListLine },
+  ])),
   Prec.highest(keymap.of([
     { key: 'Enter', run: enterListAndBlockquoteAware },
     { key: 'Backspace', run: backspaceMarkerLineAware },

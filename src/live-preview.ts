@@ -23,8 +23,8 @@ import {
   ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { EditorState, Range } from '@codemirror/state';
-import { syntaxTree } from '@codemirror/language';
+import { EditorSelection, EditorState, Range, Transaction } from '@codemirror/state';
+import { indentUnit, syntaxTree } from '@codemirror/language';
 
 // --- Widgets for replacing syntax tokens ---
 
@@ -133,6 +133,10 @@ class LinkArrowWidget extends WidgetType {
 
 const hidden = Decoration.replace({ widget: new HiddenWidget() });
 const syntaxFade = Decoration.mark({ class: 'cm-live-preview-syntax-fade' });
+/** Single mark: nested syntax-fade + number-zone broke inline-block/margin; combined matches the widget slot. */
+const orderedNumberEditMark = Decoration.mark({
+  class: 'cm-live-preview-ordered-number-zone cm-live-preview-syntax-fade',
+});
 
 // --- Line decorations ---
 
@@ -177,6 +181,8 @@ export interface ResolvedListLine {
   taskBoxTo?: number;
   /** For ordered lists: marker text to show in widget (e.g. "1." or "10)"). */
   orderedMarkerText?: string;
+  /** For ordered lists: delimiter used ('.' or ')') so we keep it when renumbering. */
+  orderedDelimiter?: '.' | ')';
 }
 
 function buildDecorationsFromTree(
@@ -464,10 +470,14 @@ function buildDecorationsFromTree(
       kind = 'ordered';
     }
 
-    const orderedMarkerText = kind === 'ordered'
-      ? doc.sliceString(listMark.from, listMark.to).trim()
-      : undefined;
-    listLineMap.set(lineFrom, { kind, taskState, markerFrom: listMark.from, markerTo, taskBoxFrom, taskBoxTo, orderedMarkerText });
+    let orderedMarkerText: string | undefined;
+    let orderedDelimiter: '.' | ')' | undefined;
+    if (kind === 'ordered') {
+      const raw = doc.sliceString(listMark.from, listMark.to).trim();
+      orderedMarkerText = raw;
+      orderedDelimiter = raw.endsWith(')') ? ')' : '.';
+    }
+    listLineMap.set(lineFrom, { kind, taskState, markerFrom: listMark.from, markerTo, taskBoxFrom, taskBoxTo, orderedMarkerText, orderedDelimiter });
   }
 }
 
@@ -478,8 +488,80 @@ function buildDecorationsFromTree(
 // regex for those when tree is incomplete. Wiki-links, @mentions, #hashtags remain regex-only.
 
 const TASK_BULLET_REGEX = /^(\s*)([-+] \[([x\->  ])\] |(\*) |([-+]) )/;
-/** Ordered list: leading whitespace + "1. " or "2) " etc. */
-const ORDERED_LIST_REGEX = /^(\s*)(\d+[.)]\s+)/;
+/** Ordered list: leading whitespace + "1. " or "2) " etc. Groups: (1) leading, (2) digits, (3) delimiter. Trailing \\s* so "4)Four" still parses (marker end = match length; renumber inserts a space). */
+export const ORDERED_LIST_REGEX = /^(\s*)(\d+)([.)])\s*/;
+
+/**
+ * When the caret snaps to the first digit of an ordered marker (atomic replace + raw marker edit mode),
+ * typing body text inserts before the digit → "Four3) ". Redirect pure inserts at markerFrom to markerTo
+ * unless the insert is a single ASCII digit (editing the list number), or exactly one indent unit
+ * (Tab on list lines inserts at line.from, which equals markerFrom when there is no leading whitespace).
+ */
+export const orderedListBodyInsertFilter = EditorState.transactionFilter.of((tr: Transaction) => {
+  if (tr.changes.empty) return tr;
+  const s = tr.startState;
+  const indent = s.facet(indentUnit);
+  const specs: { from: number; to: number; insert: string }[] = [];
+  let redirected: { markerFrom: number; markerTo: number } | null = null;
+  let abortMultiRedirect = false;
+
+  tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+    const ins = inserted.toString();
+    if (fromA !== toA) {
+      specs.push({ from: fromA, to: toA, insert: ins });
+      return;
+    }
+    if (ins.length === 0) return;
+
+    const line = s.doc.lineAt(fromA);
+    const m = line.text.match(ORDERED_LIST_REGEX);
+    if (!m) {
+      specs.push({ from: fromA, to: toA, insert: ins });
+      return;
+    }
+    const leadLen = m[1].length;
+    const markerFrom = line.from + leadLen;
+    const markerTo = line.from + m[0].length;
+    if (fromA !== markerFrom) {
+      specs.push({ from: fromA, to: toA, insert: ins });
+      return;
+    }
+    // Match indentMore (`input.indent`) and exact indent unit; Tab from tabOnHeadingOrListLine must tag input.indent.
+    if (ins === indent || tr.isUserEvent('input.indent')) {
+      specs.push({ from: fromA, to: toA, insert: ins });
+      return;
+    }
+    const singleDigit = ins.length === 1 && ins >= '0' && ins <= '9';
+    if (singleDigit) {
+      specs.push({ from: fromA, to: toA, insert: ins });
+      return;
+    }
+    if (redirected) {
+      abortMultiRedirect = true;
+      return;
+    }
+    redirected = { markerFrom, markerTo };
+    specs.push({ from: markerTo, to: markerTo, insert: ins });
+  });
+
+  if (abortMultiRedirect || !redirected) return tr;
+  // Assignment happens inside iterChanges; TS does not narrow `redirected` across that callback.
+  const r = redirected as { markerFrom: number; markerTo: number };
+
+  const delta = r.markerTo - r.markerFrom;
+  const newSel = tr.newSelection;
+  const adjusted =
+    newSel.ranges.length === 1 && newSel.main.empty
+      ? EditorSelection.cursor(newSel.main.head + delta, newSel.main.assoc ?? 0)
+      : newSel;
+
+  return {
+    changes: specs,
+    selection: adjusted,
+    effects: tr.effects,
+    scrollIntoView: tr.scrollIntoView,
+  };
+});
 
 function resolveListLineFromRegex(line: { from: number; text: string }, taskMatch: RegExpMatchArray): ResolvedListLine {
   const leadLen = taskMatch[1].length;
@@ -508,17 +590,230 @@ function resolveListLineFromRegex(line: { from: number; text: string }, taskMatc
 
 function resolveOrderedListFromRegex(line: { from: number; text: string }, orderedMatch: RegExpMatchArray): ResolvedListLine {
   const leadLen = orderedMatch[1].length;
-  const markerLen = orderedMatch[2].length;
   const markerFrom = line.from + leadLen;
-  const markerTo = line.from + leadLen + markerLen;
-  const orderedMarkerText = orderedMatch[2].trim();
-  return { kind: 'ordered', markerFrom, markerTo, orderedMarkerText };
+  const markerTo = line.from + orderedMatch[0].length;
+  const orderedMarkerText = orderedMatch[2] + (orderedMatch[3] ?? '.'); // e.g. "1." or "2)"
+  const delim = (orderedMatch[3] === ')' ? ')' : '.') as '.' | ')';
+  return { kind: 'ordered', markerFrom, markerTo, orderedMarkerText, orderedDelimiter: delim };
+}
+
+/**
+ * Syntax tree ListMark can end before the space after the delimiter, so the replace range would miss that space and
+ * the gap between number and body looks tight until the next rebuild. Regex always matches the full `1. ` span.
+ */
+function normalizeOrderedResolvedFromLineText(line: { from: number; text: string }, resolved: ResolvedListLine): ResolvedListLine {
+  if (resolved.kind !== 'ordered') return resolved;
+  const m = line.text.match(ORDERED_LIST_REGEX);
+  if (!m) return resolved;
+  return resolveOrderedListFromRegex(line, m);
+}
+
+/** Doc position after the ordered marker (`1. `), i.e. first index for body text. Used after Tab + renumber so typing does not insert before the number. */
+export function getOrderedMarkerEnd(state: EditorState, lineNumber: number): number | null {
+  const line = state.doc.line(lineNumber);
+  const m = line.text.match(ORDERED_LIST_REGEX);
+  if (!m) return null;
+  return line.from + m[0].length;
+}
+
+/** True when the line is ordered and has nothing after the marker (only whitespace). */
+export function orderedListLineHasNoBody(lineText: string): boolean {
+  const m = lineText.match(ORDERED_LIST_REGEX);
+  if (!m) return false;
+  const rest = lineText.slice(m[0].length);
+  return rest.trim() === '';
 }
 
 /** True if the line looks like a list (ordered, task, or bullet). Used by main for Tab-at-line-start. */
 export function isListLine(state: EditorState, lineNumber: number): boolean {
   const line = state.doc.line(lineNumber);
   return TASK_BULLET_REGEX.test(line.text) || ORDERED_LIST_REGEX.test(line.text);
+}
+
+// --- Ordered list run and renumbering (consecutive lines only) ---
+
+export interface OrderedLineInRun {
+  lineFrom: number;
+  lineNumber: number;
+  indentLevel: number;
+  markerFrom: number;
+  markerTo: number;
+  num: number;
+  delim: '.' | ')';
+}
+
+/** Indent level 0..3 from leading tabs/spaces (tabs count 1, 4 spaces = 1). */
+function getIndentLevel(lineText: string): number {
+  const lead = lineText.match(/^(\s*)/)?.[1] ?? '';
+  const tabCount = (lead.match(/\t/g) ?? []).length;
+  const spaceCount = (lead.match(/ /g) ?? []).length;
+  return Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+}
+
+/** Consecutive ordered-list lines containing the given line. Blank or non-ordered lines break the run. */
+export function getOrderedRun(state: EditorState, lineNumber: number): OrderedLineInRun[] {
+  const doc = state.doc;
+  const run: OrderedLineInRun[] = [];
+  let i = lineNumber;
+  while (i >= 1) {
+    const line = doc.line(i);
+    const m = line.text.match(ORDERED_LIST_REGEX);
+    if (!m) break;
+    const leadLen = m[1].length;
+    run.unshift({
+      lineFrom: line.from,
+      lineNumber: i,
+      indentLevel: getIndentLevel(line.text),
+      markerFrom: line.from + leadLen,
+      markerTo: line.from + m[0].length,
+      num: parseInt(m[2], 10),
+      delim: m[3] === ')' ? ')' : '.',
+    });
+    i--;
+  }
+  i = lineNumber + 1;
+  while (i <= doc.lines) {
+    const line = doc.line(i);
+    const m = line.text.match(ORDERED_LIST_REGEX);
+    if (!m) break;
+    const leadLen = m[1].length;
+    run.push({
+      lineFrom: line.from,
+      lineNumber: i,
+      indentLevel: getIndentLevel(line.text),
+      markerFrom: line.from + leadLen,
+      markerTo: line.from + m[0].length,
+      num: parseInt(m[2], 10),
+      delim: m[3] === ')' ? ')' : '.',
+    });
+    i++;
+  }
+  return run;
+}
+
+/** If pos is inside the number zone (digits only, to the left of the delimiter) of an ordered line, return that line's marker info. Used for: show raw when editing. */
+export function getOrderedNumberZoneAt(state: EditorState, pos: number): { lineFrom: number; markerFrom: number; markerTo: number; num: number; delim: '.' | ')' } | null {
+  const line = state.doc.lineAt(pos);
+  const m = line.text.match(ORDERED_LIST_REGEX);
+  if (!m) return null;
+  const leadLen = m[1].length;
+  const markerFrom = line.from + leadLen;
+  const markerTo = line.from + m[0].length;
+  const numberZoneEnd = markerFrom + m[2].length; // digits only (exclusive)
+  if (pos < markerFrom || pos >= numberZoneEnd) return null;
+  return {
+    lineFrom: line.from,
+    markerFrom,
+    markerTo,
+    num: parseInt(m[2], 10),
+    delim: m[3] === ')' ? ')' : '.',
+  };
+}
+
+/** If pos is anywhere inside the full marker (digits + delimiter + optional spaces) of an ordered line, return that line's marker info. Used for: trigger renumber only when cursor leaves the whole marker. */
+function getOrderedMarkerRangeAt(state: EditorState, pos: number): { lineFrom: number; markerFrom: number; markerTo: number } | null {
+  const line = state.doc.lineAt(pos);
+  const m = line.text.match(ORDERED_LIST_REGEX);
+  if (!m) return null;
+  const leadLen = m[1].length;
+  const markerFrom = line.from + leadLen;
+  const markerTo = line.from + m[0].length;
+  if (pos < markerFrom || pos >= markerTo) return null;
+  return { lineFrom: line.from, markerFrom, markerTo };
+}
+
+/** 1-based index of this line among lines at the same indent level in the run. */
+function expectedNumberAtLevel(run: OrderedLineInRun[], lineFrom: number, level: number): number {
+  let n = 0;
+  for (const row of run) {
+    if (row.indentLevel !== level) continue;
+    n++;
+    if (row.lineFrom === lineFrom) return n;
+  }
+  return 0;
+}
+
+/** Renumber run: assign 1,2,3 per indent level (for indent/outdent). */
+function renumberRunSequential(_state: EditorState, run: OrderedLineInRun[]): { from: number; to: number; insert: string }[] {
+  const changes: { from: number; to: number; insert: string }[] = [];
+  const counters: Record<number, number> = {};
+  for (const row of run) {
+    const level = row.indentLevel;
+    counters[level] = (counters[level] ?? 0) + 1;
+    const newNum = counters[level];
+    const newMarker = String(newNum) + row.delim + ' ';
+    changes.push({ from: row.markerFrom, to: row.markerTo, insert: newMarker });
+  }
+  return changes;
+}
+
+/** Renumber from edited line onward at same level: set to startNum, startNum+1, ... (for edit-then-leave). */
+function renumberRunFromEdit(_state: EditorState, run: OrderedLineInRun[], editedLineFrom: number, startNum: number): { from: number; to: number; insert: string }[] {
+  const changes: { from: number; to: number; insert: string }[] = [];
+  let found = false;
+  let n = startNum;
+  const editedLevel = run.find((r) => r.lineFrom === editedLineFrom)?.indentLevel ?? 0;
+  for (const row of run) {
+    if (row.lineFrom === editedLineFrom) found = true;
+    if (!found || row.indentLevel !== editedLevel) continue;
+    const newMarker = String(n) + row.delim + ' ';
+    changes.push({ from: row.markerFrom, to: row.markerTo, insert: newMarker });
+    n++;
+  }
+  return changes;
+}
+
+/** Renumber changes for the ordered run containing this line, in coordinates of `state` (e.g. after outdent). Used to merge outdent + renumber in one transaction. */
+export function getRenumberOrderedListChanges(
+  state: EditorState,
+  lineNumber: number,
+): { from: number; to: number; insert: string }[] {
+  const run = getOrderedRun(state, lineNumber);
+  if (run.length === 0) return [];
+  return renumberRunSequential(state, run);
+}
+
+/** Call after indent or outdent: renumber the ordered run containing this line (1,2,3 per level). */
+export function renumberOrderedListAfterIndent(view: EditorView, lineNumber: number): boolean {
+  const changes = getRenumberOrderedListChanges(view.state, lineNumber);
+  if (changes.length === 0) return false;
+  view.dispatch({
+    changes: changes.map((c) => ({ from: c.from, to: c.to, insert: c.insert })),
+  });
+  return true;
+}
+
+/** Call when cursor leaves the number zone of an ordered line; renumbers subsequent lines at that level if the number was changed. */
+export function renumberOrderedListAfterLeaveNumberZone(
+  view: EditorView,
+  lineFrom: number,
+  _markerFrom: number,
+  _markerTo: number,
+  currentNum: number,
+  _delim: '.' | ')',
+): boolean {
+  const run = getOrderedRun(view.state, view.state.doc.lineAt(lineFrom).number);
+  if (run.length === 0) return false;
+  const expected = expectedNumberAtLevel(run, lineFrom, run.find((r) => r.lineFrom === lineFrom)!.indentLevel);
+  if (currentNum === expected) return false;
+  const changes = renumberRunFromEdit(view.state, run, lineFrom, currentNum);
+  if (changes.length === 0) return false;
+  view.dispatch({
+    changes: changes.map((c) => ({ from: c.from, to: c.to, insert: c.insert })),
+  });
+  return true;
+}
+
+/** Next number and delimiter for a new line at the same indent in the run (for Enter). */
+export function getNextOrderedMarkerInRun(state: EditorState, lineNumber: number): { num: number; delim: '.' | ')' } | null {
+  const run = getOrderedRun(state, lineNumber);
+  if (run.length === 0) return null;
+  const line = state.doc.line(lineNumber);
+  const level = getIndentLevel(line.text);
+  const expected = expectedNumberAtLevel(run, line.from, level);
+  if (expected === 0) return null;
+  const row = run.find((r) => r.lineNumber === lineNumber);
+  return row ? { num: expected + 1, delim: row.delim } : null;
 }
 
 /** When true, skip tree and use only regex/line iteration (avoids stale tree positions right after doc change). */
@@ -634,8 +929,11 @@ function buildDecorations(
     }
 
     // List/task/ordered line: line deco + replace marker range with inline widget (CM6-native; range is atomic).
-    const resolved = listLineMap.get(line.from)
+    let resolved = listLineMap.get(line.from)
       ?? (taskMatch ? resolveListLineFromRegex(line, taskMatch) : orderedMatch ? resolveOrderedListFromRegex(line, orderedMatch) : null);
+    if (resolved?.kind === 'ordered') {
+      resolved = normalizeOrderedResolvedFromLineText(line, resolved);
+    }
     if (resolved) {
       decorations.push(listLineDeco.range(line.from));
       if (resolved.kind === 'task' && resolved.taskState === 'done') decorations.push(doneTaskLineDeco.range(line.from));
@@ -659,12 +957,36 @@ function buildDecorations(
       }
 
       // Marker replace: only the marker (after leading whitespace), so we don't overlap with hidden.
-      // Ordered list: do not replace — leave "1." / "10)" in the doc so the user can edit numbers; just fade the marker.
-      const markerFrom = leadingLen > 0 ? line.from + leadingLen : resolved.markerFrom;
+      // Ordered: always use regex-normalized markerFrom (same as tree normalize) so top-level and indented align.
+      // When cursor is anywhere in the marker (digits + delimiter + space), show raw edit; else widget.
+      // Digit-only would make top-level (easy to click digits) feel unlike indented (caret often on delim/space).
+      const markerFrom =
+        resolved.kind === 'ordered'
+          ? resolved.markerFrom
+          : leadingLen > 0
+            ? line.from + leadingLen
+            : resolved.markerFrom;
       const markerTo = resolved.markerTo;
       if (markerFrom < markerTo && markerFrom >= line.from && markerTo <= line.to && markerTo <= doc.length) {
         if (resolved.kind === 'ordered') {
-          decorations.push(syntaxFade.range(markerFrom, markerTo));
+          const cursorInsideOrderedMarker =
+            cursorPos >= markerFrom && cursorPos < markerTo;
+          if (cursorInsideOrderedMarker) {
+            decorations.push(orderedNumberEditMark.range(markerFrom, markerTo));
+          } else {
+            decorations.push(
+              Decoration.replace({
+                widget: new MarkerWidget(
+                  'ordered',
+                  undefined,
+                  undefined,
+                  undefined,
+                  resolved.orderedMarkerText,
+                ),
+                inclusive: false,
+              }).range(markerFrom, markerTo),
+            );
+          }
         } else {
           decorations.push(
             Decoration.replace({
@@ -919,6 +1241,33 @@ export const livePreview = ViewPlugin.fromClass(
     update(update: ViewUpdate) {
       const sel = update.state.selection.main;
       const newPos = sel.head;
+      const prevHead = this.cursorPos;
+
+      const scheduleRenumberIfLeftNumberZone = () => {
+        const leftMarker = getOrderedMarkerRangeAt(update.startState, prevHead);
+        if (!leftMarker) return;
+        const stillInMarker = getOrderedMarkerRangeAt(update.state, newPos)?.lineFrom === leftMarker.lineFrom;
+        if (stillInMarker) return;
+        const lineNumber = update.startState.doc.lineAt(leftMarker.lineFrom).number;
+        const view = update.view;
+        setTimeout(() => {
+          const state = view.state;
+          const line = state.doc.line(lineNumber);
+          const m = line.text.match(ORDERED_LIST_REGEX);
+          if (!m) return;
+          const leadLen = m[1].length;
+          const markerFrom = line.from + leadLen;
+          const markerTo = line.from + m[0].length;
+          renumberOrderedListAfterLeaveNumberZone(
+            view,
+            line.from,
+            markerFrom,
+            markerTo,
+            parseInt(m[2], 10),
+            m[3] === ')' ? ')' : '.',
+          );
+        }, 0);
+      };
 
       if (update.docChanged || update.viewportChanged) {
         this.cursorPos = newPos;
@@ -933,7 +1282,9 @@ export const livePreview = ViewPlugin.fromClass(
           console.error('[live-preview] doc.length=', update.state.doc.length, 'lines=', update.state.doc.lines);
           this.decorations = Decoration.none;
         }
-      } else if (sel.empty && newPos !== this.cursorPos) {
+        scheduleRenumberIfLeftNumberZone();
+      } else if (sel.empty && newPos !== prevHead) {
+        scheduleRenumberIfLeftNumberZone();
         this.cursorPos = newPos;
         try {
           this.decorations = buildDecorations(update.state, this.cursorPos);

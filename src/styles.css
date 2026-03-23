@@ -34,7 +34,7 @@
   --bullet: #736B1E;
   /* Live preview layout: n = marker width; content start = line-left + n; indent levels = multiples of n; zero-level list/blockquote and first-level indent wrap to same place. */
   --live-preview-line-left: 6px;
-  --live-preview-marker-width: 2.5ch;
+  --live-preview-marker-width: 3ch;
   --live-preview-indent-step: var(--live-preview-marker-width);
   --resize-handle: #BF1B1B;
 }
@@ -574,9 +574,28 @@ html, body {
   vertical-align: middle;
 }
 
+/* Ordered: baseline-align with body text; gap before list content (replace hides trailing space in doc). */
+.cm-live-preview-marker-widget.cm-live-preview-marker-ordered {
+  vertical-align: baseline;
+  line-height: inherit;
+  margin-right: 0.4em;
+}
 .cm-live-preview-marker-ordered {
   color: var(--text-muted);
   font-size: 1em;
+  text-align: right;
+}
+/* When cursor is in the number (editing), keep 3ch width so line doesn't jump. Pull into same slot as marker widget. */
+.cm-live-preview-ordered-number-zone {
+  display: inline-block;
+  width: var(--live-preview-marker-width);
+  min-width: var(--live-preview-marker-width);
+  margin-left: calc(-1 * var(--live-preview-marker-width));
+  margin-right: 0.4em;
+  box-sizing: border-box;
+  text-align: right;
+  vertical-align: baseline;
+  line-height: inherit;
 }
 
 /* Task: Remix Icon <i> inside span; color by state */
