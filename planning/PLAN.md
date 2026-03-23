@@ -2,7 +2,8 @@
 
 ## Current focus
 
-- **Thoroughly test list continuation, Enter, and Backspace** — We just implemented: Enter continues list/blockquote when line has text (bullet → `* `, ordered → next number, task → `- [ ] `, checklist → `+ [ ] `, blockquote → `> `); Enter on marker-only line clears the line; Backspace on marker-only line clears the whole line (task, bullet, ordered, checklist, blockquote). Run through all cases and edge cases before relying on it.
+- **Editor list behavior — manual pass + more automated tests** — Enter/Backspace/marker-only rules are implemented in `main.ts` (see bullets below). **Automated:** Vitest covers `live-preview.ts` ordered-list body insert filter, nested **segment** renumbering (nested `1)` restarts after a shallower line), and `getNextOrderedMarkerInRun` (`npm test`). **Still manual or not covered:** Tab/Shift-Tab on heading+list lines, full Enter/Backspace matrix, paste flows — next step is extract list keymap helpers from `main.ts` and add **happy-dom** `EditorView` tests and/or Playwright later.
+- **Thoroughly exercise list continuation, Enter, and Backspace** — Enter continues list/blockquote when line has text (bullet → `* `, ordered → next number with segment rules, task → `- [ ] `, checklist → `+ [ ] `, blockquote → `> `); Enter on marker-only line clears the line; Backspace on marker-only line clears the whole line (task, bullet, ordered, checklist, blockquote). Run through all cases and edge cases in the app (`npm run tauri dev`).
 
 ---
 
@@ -224,6 +225,12 @@ Things we might want but aren't committed to. Some need significant investigatio
 ## Archive
 
 Finished tasks, jobs, and phases (newest first). Full detail preserved here; README has a short Implemented summary.
+
+**Most recent (ordered lists, layout, tests)**
+
+- **Nested ordered lists** — Renumbering restarts at `1)` at each indent level when a shallower line appears between two deeper ordered lines (segment breaks via `indentBreaksBetween` in `live-preview.ts`).
+- **Hidden “syntax” layout** — `HiddenWidget` renders replaced text with `opacity:0` + `white-space:pre` so vertical cursor motion (`ArrowUp` / `posAtCoords`) does not skip lines whose leading indent was `display:none`.
+- **Vitest** — `npm test` runs `src/live-preview.ordered-filter.test.ts` (body insert filter, segment renumbering, `getNextOrderedMarkerInRun`). `vitest.config.ts` uses Node.
 
 **Most recent (editor list/blockquote and autolink)**
 
