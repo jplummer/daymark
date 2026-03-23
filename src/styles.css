@@ -478,6 +478,14 @@ html, body {
   color: var(--syntax-fade) !important;
 }
 
+/* Invisible stand-in for replaced syntax/indent: keeps layout width for coordsAtPos / vertical arrows */
+.cm-live-preview-hidden-text {
+  opacity: 0;
+  font: inherit;
+  white-space: pre;
+  pointer-events: none;
+}
+
 /* ── Live preview inline styles ── */
 
 .cm-live-preview-bold { font-weight: 700; }

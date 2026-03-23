@@ -28,12 +28,32 @@ import { indentUnit, syntaxTree } from '@codemirror/language';
 
 // --- Widgets for replacing syntax tokens ---
 
+/**
+ * Replaces a doc range with an invisible copy of the same text so horizontal
+ * extent matches the real characters. `display:none` had zero width and broke
+ * vertical cursor motion (ArrowUp skipped indented / hidden-indent lines).
+ */
 class HiddenWidget extends WidgetType {
+  constructor(readonly text: string) {
+    super();
+  }
+
   toDOM() {
     const span = document.createElement('span');
-    span.style.display = 'none';
+    span.className = 'cm-live-preview-hidden-text';
+    span.textContent = this.text;
     return span;
   }
+
+  eq(other: HiddenWidget) {
+    return other instanceof HiddenWidget && other.text === this.text;
+  }
+}
+
+function hiddenRange(state: EditorState, from: number, to: number) {
+  return Decoration.replace({
+    widget: new HiddenWidget(state.sliceDoc(from, to)),
+  }).range(from, to);
 }
 
 // Remix Icon class names for task states (match sidebar / index.html usage)
@@ -131,7 +151,6 @@ class LinkArrowWidget extends WidgetType {
   }
 }
 
-const hidden = Decoration.replace({ widget: new HiddenWidget() });
 const syntaxFade = Decoration.mark({ class: 'cm-live-preview-syntax-fade' });
 /** Single mark: nested syntax-fade + number-zone broke inline-block/margin; combined matches the widget slot. */
 const orderedNumberEditMark = Decoration.mark({
@@ -223,7 +242,7 @@ function buildDecorationsFromTree(
           const spaceCount = (leadingPart.match(/ /g) ?? []).length;
           const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
           decorations.push(indentLineDecos[indentLevel].range(line.from));
-          decorations.push(hidden.range(line.from, line.from + leadingLen));
+          decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
         }
         return;
       }
@@ -251,7 +270,7 @@ function buildDecorationsFromTree(
           decorations.push(syntaxFade.range(from, fadeEnd));
         } else {
           const hideEnd = to < line.to && doc.sliceString(to, to + 1) === ' ' ? to + 1 : to;
-          decorations.push(hidden.range(from, Math.min(hideEnd, line.to)));
+          decorations.push(hiddenRange(state, from, Math.min(hideEnd, line.to)));
         }
         return;
       }
@@ -284,11 +303,11 @@ function buildDecorationsFromTree(
               const spaceCount = (leadingPart.match(/ /g) ?? []).length;
               const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
               decorations.push(indentLineDecos[indentLevel].range(line.from));
-              decorations.push(hidden.range(line.from, line.from + leadingLen));
+              decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
             }
             const markerStart = line.from + leadingLen;
             const markerEnd = markerStart + qMatch[2].length;
-            decorations.push(hidden.range(markerStart, markerEnd));
+            decorations.push(hiddenRange(state, markerStart, markerEnd));
           }
           pos = line.to + 1;
         }
@@ -312,8 +331,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hidden.range(from, contentFrom));
-            decorations.push(hidden.range(contentTo, to));
+            decorations.push(hiddenRange(state, from, contentFrom));
+            decorations.push(hiddenRange(state, contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(contentFrom, contentTo));
         }
@@ -328,8 +347,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hidden.range(from, contentFrom));
-            decorations.push(hidden.range(contentTo, to));
+            decorations.push(hiddenRange(state, from, contentFrom));
+            decorations.push(hiddenRange(state, contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(contentFrom, contentTo));
         }
@@ -344,8 +363,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hidden.range(from, contentFrom));
-            decorations.push(hidden.range(contentTo, to));
+            decorations.push(hiddenRange(state, from, contentFrom));
+            decorations.push(hiddenRange(state, contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(contentFrom, contentTo));
         }
@@ -360,8 +379,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hidden.range(from, contentFrom));
-            decorations.push(hidden.range(contentTo, to));
+            decorations.push(hiddenRange(state, from, contentFrom));
+            decorations.push(hiddenRange(state, contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(contentFrom, contentTo));
         }
@@ -387,9 +406,9 @@ function buildDecorationsFromTree(
             decorations.push(linkMark);
             decorations.push(syntaxFade.range(linkTextTo, to));
           } else {
-            decorations.push(hidden.range(from, linkTextFrom));
+            decorations.push(hiddenRange(state, from, linkTextFrom));
             decorations.push(linkMark);
-            decorations.push(hidden.range(linkTextTo, to));
+            decorations.push(hiddenRange(state, linkTextTo, to));
             decorations.push(Decoration.widget({
               widget: new LinkArrowWidget(url),
               side: 1,
@@ -409,8 +428,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, urlFrom));
             decorations.push(syntaxFade.range(urlTo, to));
           } else {
-            decorations.push(hidden.range(from, urlFrom));
-            decorations.push(hidden.range(urlTo, to));
+            decorations.push(hiddenRange(state, from, urlFrom));
+            decorations.push(hiddenRange(state, urlTo, to));
           }
           decorations.push(Decoration.mark({
             class: 'cm-live-preview-extlink',
@@ -722,24 +741,54 @@ function getOrderedMarkerRangeAt(state: EditorState, pos: number): { lineFrom: n
   return { lineFrom: line.from, markerFrom, markerTo };
 }
 
-/** 1-based index of this line among lines at the same indent level in the run. */
-function expectedNumberAtLevel(run: OrderedLineInRun[], lineFrom: number, level: number): number {
+/**
+ * True if any line strictly between lineLo and lineHi has indent strictly less than `level`.
+ * Nested ordered lists restart at 1 after a shallower line (e.g. top-level `3)`) appears between
+ * two deeper items.
+ */
+function indentBreaksBetween(state: EditorState, lineLo: number, lineHi: number, level: number): boolean {
+  if (level <= 0) return false;
+  const doc = state.doc;
+  const lo = Math.min(lineLo, lineHi);
+  const hi = Math.max(lineLo, lineHi);
+  for (let ln = lo + 1; ln < hi; ln++) {
+    if (ln < 1 || ln > doc.lines) continue;
+    const line = doc.line(ln);
+    if (getIndentLevel(line.text) < level) return true;
+  }
+  return false;
+}
+
+/** 1-based index of this line among lines at the same indent level in the same segment (shallower line breaks segments). */
+function expectedNumberAtLevel(state: EditorState, run: OrderedLineInRun[], lineFrom: number, level: number): number {
   let n = 0;
+  let prevLineNum: number | null = null;
   for (const row of run) {
     if (row.indentLevel !== level) continue;
+    if (prevLineNum !== null && indentBreaksBetween(state, prevLineNum, row.lineNumber, level)) {
+      n = 0;
+    }
     n++;
     if (row.lineFrom === lineFrom) return n;
+    prevLineNum = row.lineNumber;
   }
   return 0;
 }
 
-/** Renumber run: assign 1,2,3 per indent level (for indent/outdent). */
-function renumberRunSequential(_state: EditorState, run: OrderedLineInRun[]): { from: number; to: number; insert: string }[] {
+/** Renumber run: assign 1,2,3 per indent level (for indent/outdent), restarting per segment when a shallower line breaks nesting. */
+function renumberRunSequential(state: EditorState, run: OrderedLineInRun[]): { from: number; to: number; insert: string }[] {
   const changes: { from: number; to: number; insert: string }[] = [];
   const counters: Record<number, number> = {};
-  for (const row of run) {
+  const lastLineAtLevel: Record<number, number> = {};
+  const sorted = [...run].sort((a, b) => a.lineNumber - b.lineNumber);
+  for (const row of sorted) {
     const level = row.indentLevel;
+    const prevLn = lastLineAtLevel[level];
+    if (prevLn !== undefined && indentBreaksBetween(state, prevLn, row.lineNumber, level)) {
+      counters[level] = 0;
+    }
     counters[level] = (counters[level] ?? 0) + 1;
+    lastLineAtLevel[level] = row.lineNumber;
     const newNum = counters[level];
     const newMarker = String(newNum) + row.delim + ' ';
     changes.push({ from: row.markerFrom, to: row.markerTo, insert: newMarker });
@@ -747,18 +796,26 @@ function renumberRunSequential(_state: EditorState, run: OrderedLineInRun[]): { 
   return changes;
 }
 
-/** Renumber from edited line onward at same level: set to startNum, startNum+1, ... (for edit-then-leave). */
-function renumberRunFromEdit(_state: EditorState, run: OrderedLineInRun[], editedLineFrom: number, startNum: number): { from: number; to: number; insert: string }[] {
+/** Renumber from edited line onward at same level: set to startNum, startNum+1, ... (for edit-then-leave). Stops at segment boundary. */
+function renumberRunFromEdit(state: EditorState, run: OrderedLineInRun[], editedLineFrom: number, startNum: number): { from: number; to: number; insert: string }[] {
+  const editedRow = run.find((r) => r.lineFrom === editedLineFrom);
+  if (!editedRow) return [];
+  const editedLevel = editedRow.indentLevel;
+  const editedLineNum = editedRow.lineNumber;
+  const sorted = [...run].sort((a, b) => a.lineNumber - b.lineNumber);
   const changes: { from: number; to: number; insert: string }[] = [];
-  let found = false;
   let n = startNum;
-  const editedLevel = run.find((r) => r.lineFrom === editedLineFrom)?.indentLevel ?? 0;
-  for (const row of run) {
-    if (row.lineFrom === editedLineFrom) found = true;
-    if (!found || row.indentLevel !== editedLevel) continue;
-    const newMarker = String(n) + row.delim + ' ';
-    changes.push({ from: row.markerFrom, to: row.markerTo, insert: newMarker });
+  let prevLineNum = editedLineNum;
+
+  for (const row of sorted) {
+    if (row.indentLevel !== editedLevel) continue;
+    if (row.lineNumber < editedLineNum) continue;
+    if (row.lineNumber > editedLineNum) {
+      if (indentBreaksBetween(state, prevLineNum, row.lineNumber, editedLevel)) break;
+    }
+    changes.push({ from: row.markerFrom, to: row.markerTo, insert: String(n) + row.delim + ' ' });
     n++;
+    prevLineNum = row.lineNumber;
   }
   return changes;
 }
@@ -794,7 +851,12 @@ export function renumberOrderedListAfterLeaveNumberZone(
 ): boolean {
   const run = getOrderedRun(view.state, view.state.doc.lineAt(lineFrom).number);
   if (run.length === 0) return false;
-  const expected = expectedNumberAtLevel(run, lineFrom, run.find((r) => r.lineFrom === lineFrom)!.indentLevel);
+  const expected = expectedNumberAtLevel(
+    view.state,
+    run,
+    lineFrom,
+    run.find((r) => r.lineFrom === lineFrom)!.indentLevel,
+  );
   if (currentNum === expected) return false;
   const changes = renumberRunFromEdit(view.state, run, lineFrom, currentNum);
   if (changes.length === 0) return false;
@@ -810,7 +872,7 @@ export function getNextOrderedMarkerInRun(state: EditorState, lineNumber: number
   if (run.length === 0) return null;
   const line = state.doc.line(lineNumber);
   const level = getIndentLevel(line.text);
-  const expected = expectedNumberAtLevel(run, line.from, level);
+  const expected = expectedNumberAtLevel(state, run, line.from, level);
   if (expected === 0) return null;
   const row = run.find((r) => r.lineNumber === lineNumber);
   return row ? { num: expected + 1, delim: row.delim } : null;
@@ -870,7 +932,7 @@ function buildDecorations(
         const spaceCount = (leadingPart.match(/ /g) ?? []).length;
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hidden.range(line.from, line.from + leadingLen));
+        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
       }
       const hashFrom = line.from + leadingLen;
       const hashFadeTo = Math.min(hashFrom + hashLen, line.to);
@@ -878,7 +940,7 @@ function buildDecorations(
       if (onCursorLine) {
         decorations.push(syntaxFade.range(hashFrom, hashFadeTo));
       } else {
-        decorations.push(hidden.range(hashFrom, hashHideTo));
+        decorations.push(hiddenRange(state, hashFrom, hashHideTo));
       }
     }
 
@@ -901,11 +963,11 @@ function buildDecorations(
         const spaceCount = (leadingPart.match(/ /g) ?? []).length;
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hidden.range(line.from, line.from + leadingLen));
+        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
       }
       const markerStart = line.from + leadingLen;
       const markerEnd = markerStart + quoteMarker.length;
-      decorations.push(hidden.range(markerStart, markerEnd));
+      decorations.push(hiddenRange(state, markerStart, markerEnd));
       }
     }
 
@@ -923,7 +985,7 @@ function buildDecorations(
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         if (indentLevel >= 1) {
           decorations.push(indentLineDecos[indentLevel].range(line.from));
-          decorations.push(hidden.range(line.from, line.from + leadingLen));
+          decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
         }
       }
     }
@@ -953,7 +1015,7 @@ function buildDecorations(
 
       if (indentLevel >= 1 && leadingLen > 0) {
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hidden.range(line.from, line.from + leadingLen));
+        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
       }
 
       // Marker replace: only the marker (after leading whitespace), so we don't overlap with hidden.
@@ -1019,11 +1081,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - markerLen, end));
         } else {
-          decorations.push(hidden.range(start, start + markerLen));
+          decorations.push(hiddenRange(state, start, start + markerLen));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
             start + markerLen, start + markerLen + match[2].length
           ));
-          decorations.push(hidden.range(end - markerLen, end));
+          decorations.push(hiddenRange(state, end - markerLen, end));
         }
       }
 
@@ -1039,11 +1101,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 1, end));
         } else {
-          decorations.push(hidden.range(start, start + 1));
+          decorations.push(hiddenRange(state, start, start + 1));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
             start + 1, start + 1 + content.length
           ));
-          decorations.push(hidden.range(end - 1, end));
+          decorations.push(hiddenRange(state, end - 1, end));
         }
       }
 
@@ -1058,11 +1120,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 2, end));
         } else {
-          decorations.push(hidden.range(start, start + 2));
+          decorations.push(hiddenRange(state, start, start + 2));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
             start + 2, start + 2 + match[1].length
           ));
-          decorations.push(hidden.range(end - 2, end));
+          decorations.push(hiddenRange(state, end - 2, end));
         }
       }
 
@@ -1077,11 +1139,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 1, end));
         } else {
-          decorations.push(hidden.range(start, start + 1));
+          decorations.push(hiddenRange(state, start, start + 1));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
             start + 1, start + 1 + match[2].length
           ));
-          decorations.push(hidden.range(end - 1, end));
+          decorations.push(hiddenRange(state, end - 1, end));
         }
       }
     }
@@ -1100,9 +1162,9 @@ function buildDecorations(
         decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
         decorations.push(syntaxFade.range(end - 2, end));
       } else {
-        decorations.push(hidden.range(start, start + 2));
+        decorations.push(hiddenRange(state, start, start + 2));
         decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
-        decorations.push(hidden.range(end - 2, end));
+        decorations.push(hiddenRange(state, end - 2, end));
       }
     }
 
@@ -1127,12 +1189,12 @@ function buildDecorations(
             }).range(start + 1, linkEnd));
             decorations.push(syntaxFade.range(linkEnd, end));
           } else {
-            decorations.push(hidden.range(start, start + 1));
+            decorations.push(hiddenRange(state, start, start + 1));
             decorations.push(Decoration.mark({
               class: 'cm-live-preview-extlink',
               attributes: { 'data-href': url },
             }).range(start + 1, linkEnd));
-            decorations.push(hidden.range(linkEnd, end));
+            decorations.push(hiddenRange(state, linkEnd, end));
             /* Widget at end, side -1, so it appears after the link without overlapping the replace that starts at linkEnd */
             decorations.push(Decoration.widget({
               widget: new LinkArrowWidget(url),
@@ -1165,8 +1227,8 @@ function buildDecorations(
           decorations.push(syntaxFade.range(start, urlFrom));
           decorations.push(syntaxFade.range(urlTo, end));
         } else {
-          decorations.push(hidden.range(start, urlFrom));
-          decorations.push(hidden.range(urlTo, end));
+          decorations.push(hiddenRange(state, start, urlFrom));
+          decorations.push(hiddenRange(state, urlTo, end));
         }
         decorations.push(Decoration.mark({
           class: 'cm-live-preview-extlink',
