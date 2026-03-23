@@ -210,6 +210,7 @@ Things we might want but aren't committed to. Some need significant investigatio
 - **Interop with Obsidian and other note stores** — Ability to interact with Obsidian and other text-and-markdown-based note apps. Neat to think about; might never happen.
 - **Caret-shaped back/forward icons** — Current back/forward icons could be more caret-like. Low priority cosmetic.
 - **Flexible notes directory** — Long-term, Daymark should be able to point at any folder of markdown files, not just NotePlan's directory. Users should be able to choose `.md` or `.txt` as the file extension (or accept both). For now, targeting NotePlan's exact conventions is the right call, but the architecture should avoid hard-coding assumptions that would make this difficult later.
+- **Task schedule calendar — first day of week** — The schedule month grid uses `CALENDAR_WEEK_STARTS_ON` in `task-schedule.ts` (default **Sunday**). When a Settings / preferences layer exists, expose this so users can switch to Monday-first to match ISO week rows more closely.
 - **Schedule to quarterly notes** — NotePlan syntax is `>YYYY-Qn` (e.g. `>2026-Q1`). Lower priority.
 - **Weekly carry-forward (`>thisweek`?)** — No weekly equivalent to `>today` exists in NotePlan. Could be useful for tasks that should roll week-to-week until done, but not yet clear if needed.
 - **Link to a specific section of a note** — `[[Note Title#Section]]` or similar. NotePlan may support this but it's unused. Explore later.

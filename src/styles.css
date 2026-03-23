@@ -1018,6 +1018,14 @@ html, body {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 
+.task-context-menu--with-schedule {
+  min-width: 420px;
+  max-width: min(96vw, 520px);
+  max-height: min(85vh, 680px);
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
 .task-context-menu-item {
   display: block;
   width: 100%;
@@ -1029,12 +1037,109 @@ html, body {
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .task-context-menu-item:hover,
 .task-context-menu-item:focus {
   background: var(--bg-hover);
   outline: none;
+}
+
+.task-context-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.task-context-menu-item--stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  white-space: nowrap;
+}
+
+.task-context-menu-item--schedule-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-context-menu-schedule-line-left {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-context-menu-schedule-label {
+  flex-shrink: 0;
+}
+
+.task-context-menu-schedule-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.task-context-menu-schedule-token {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.task-context-menu-item--custom-date {
+  justify-content: space-between;
+}
+
+.task-context-menu-custom-date-chevron {
+  flex-shrink: 0;
+  font-size: 16px;
+  color: var(--text-muted);
+  transition: transform 0.12s ease;
+}
+
+.task-context-menu-item--custom-date-open .task-context-menu-custom-date-chevron {
+  transform: rotate(180deg);
+}
+
+.task-context-menu-custom-date-cal {
+  padding: 0 6px 6px 10px;
+}
+
+.task-context-menu-custom-date-cal[hidden] {
+  display: none !important;
+}
+
+.task-context-menu-primary {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.task-context-menu-markdown {
+  font-size: 11px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.task-context-menu-subheading {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 8px 14px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .task-context-menu-divider {
@@ -1052,30 +1157,204 @@ html, body {
   letter-spacing: 0.02em;
 }
 
-.task-context-menu-date-row {
+.task-context-menu-iso-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px 10px 14px;
+  gap: 2px;
+  padding: 0 14px 6px;
 }
 
-.task-context-menu-date-input {
+.task-context-menu-iso-prefix {
+  font-size: 13px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.task-context-menu-iso-input {
   flex: 1;
-  min-width: 120px;
+  min-width: 0;
   font: inherit;
   font-size: 13px;
-  padding: 4px 6px;
+  font-family: ui-monospace, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
 
-.task-context-menu-date-apply {
-  width: auto;
-  flex: 0 0 auto;
-  padding: 6px 12px;
+.task-context-menu-iso-apply {
+  margin: 0 10px 10px 14px;
+  width: calc(100% - 24px);
+}
+
+/* Inline month picker in schedule menu */
+.task-schedule-calendar {
+  padding: 2px 8px 8px;
+}
+
+.task-schedule-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.task-schedule-cal-nav-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.task-schedule-cal-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.task-schedule-cal-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  flex: 1;
+}
+
+.task-schedule-cal-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.task-schedule-cal-dow--with-week {
+  grid-template-columns: 22px repeat(7, minmax(0, 1fr));
+  gap: 1px 2px;
+  margin-bottom: 2px;
+  font-size: 9px;
+}
+
+.task-schedule-cal-week-col-head {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.task-schedule-cal-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.task-schedule-cal-week-row {
+  display: grid;
+  grid-template-columns: 22px repeat(7, minmax(0, 1fr));
+  gap: 1px 2px;
+  align-items: stretch;
+}
+
+.task-schedule-cal-week {
+  min-height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.task-schedule-cal-week:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.task-schedule-cal-pad {
+  min-height: 20px;
+}
+
+.task-schedule-cal-day {
+  min-height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.task-schedule-cal-day:hover {
+  background: var(--bg-hover);
+}
+
+.task-schedule-cal-is-today {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.task-schedule-calendar--compact {
+  padding: 0 0 4px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-nav {
+  margin-bottom: 2px;
+  gap: 4px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-nav-btn {
+  width: 22px;
+  height: 22px;
+  font-size: 14px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-title {
+  font-size: 11px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-dow--with-week {
+  font-size: 8px;
+  margin-bottom: 1px;
+  grid-template-columns: 18px repeat(7, minmax(0, 1fr));
+  gap: 0 1px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-week-row {
+  grid-template-columns: 18px repeat(7, minmax(0, 1fr));
+  gap: 0 1px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-week {
+  min-height: 17px;
+  font-size: 9px;
+  border-radius: 2px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-pad {
+  min-height: 17px;
+}
+
+.task-schedule-calendar--compact .task-schedule-cal-day {
+  min-height: 17px;
+  font-size: 10px;
+  border-radius: 2px;
 }
 
 ::-webkit-scrollbar {

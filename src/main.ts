@@ -26,6 +26,7 @@ import {
   buildScheduledSourceLine,
   cleanedTaskBody,
   formatISODate,
+  formatWeeklyCalendarFilename,
 } from './task-schedule';
 import { listLineKeymapExtensions } from './editor-list-keymap';
 import {
@@ -111,10 +112,6 @@ function mondayOfWeek(year: number, week: number): Date {
   const target = new Date(mondayOfW1);
   target.setDate(mondayOfW1.getDate() + (week - 1) * 7);
   return target;
-}
-
-function weeklyFilenameForWeek(year: number, week: number): string {
-  return `${year}-W${String(week).padStart(2, '0')}.txt`;
 }
 
 function weeklyDisplayNameForWeek(year: number, week: number): string {
@@ -1032,7 +1029,7 @@ function dailyNote(date: Date): NoteLocation {
 function weeklyNoteForWeek(year: number, week: number): NoteLocation {
   return {
     type: 'weekly',
-    relPath: `${NOTEPLAN_BASE}/Calendar/${weeklyFilenameForWeek(year, week)}`,
+    relPath: `${NOTEPLAN_BASE}/Calendar/${formatWeeklyCalendarFilename(year, week)}`,
     displayName: weeklyDisplayNameForWeek(year, week),
     weekInfo: { year, week },
   };
@@ -1145,7 +1142,16 @@ function wireTaskScheduleExecutor() {
         ? formatISODate(currentNote.date)
         : formatISODate(new Date());
     const destLine = buildDestinationLine(body, backRef);
-    const relPath = `${NOTEPLAN_BASE}/Calendar/${formatDateForFile(target.date)}`;
+
+    let relPath: string;
+    let statusDetail: string;
+    if (target.kind === 'week') {
+      relPath = `${NOTEPLAN_BASE}/Calendar/${formatWeeklyCalendarFilename(target.year, target.week)}`;
+      statusDetail = `${target.year}-W${String(target.week).padStart(2, '0')}`;
+    } else {
+      relPath = `${NOTEPLAN_BASE}/Calendar/${formatDateForFile(target.date)}`;
+      statusDetail = formatDateForDisplay(target.date);
+    }
 
     if (currentNote?.relPath === relPath && view === v) {
       const doc = v.state.doc;
@@ -1153,7 +1159,7 @@ function wireTaskScheduleExecutor() {
       const insert = doc.length === 0 ? `${destLine}\n` : endsWithNewline ? `${destLine}\n` : `\n${destLine}\n`;
       v.dispatch({ changes: { from: doc.length, to: doc.length, insert } });
       scheduleSave();
-      setStatus(`Scheduled to ${formatDateForDisplay(target.date)}`);
+      setStatus(`Scheduled to ${statusDetail}`);
       return;
     }
 
@@ -1167,7 +1173,7 @@ function wireTaskScheduleExecutor() {
       const tail = content.replace(/\s+$/, '');
       const next = tail === '' ? `${destLine}\n` : `${tail}\n${destLine}\n`;
       await writeTextFile(relPath, next, { baseDir: BaseDirectory.Home });
-      setStatus(`Scheduled to ${formatDateForDisplay(target.date)}`);
+      setStatus(`Scheduled to ${statusDetail}`);
     } catch (e) {
       console.error('[daymark] Schedule write failed:', e);
       setStatus(`Schedule failed: ${e}`);

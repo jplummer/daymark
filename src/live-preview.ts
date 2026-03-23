@@ -131,7 +131,8 @@ class MarkerWidget extends WidgetType {
         const from = this.taskBoxFrom;
         const to = this.taskBoxTo;
         span.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return;
+          // Match taskMarkerClickHandler: Ctrl/Cmd+click is context menu (macOS) or other UX — do not toggle.
+          if (e.button !== 0 || e.ctrlKey || e.metaKey) return;
           e.preventDefault();
           e.stopPropagation();
           const doc = view.state.doc;
