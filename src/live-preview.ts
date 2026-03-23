@@ -95,6 +95,17 @@ class MarkerWidget extends WidgetType {
     super();
   }
 
+  /**
+   * Default true: editor ignores pointer events so the task icon’s mousedown listener can toggle.
+   * For contextmenu, return false so CM6 treats the event as editor input — otherwise
+   * `eventBelongsToEditor` bails and `domEventHandlers.contextmenu` (task line menu) never runs.
+   */
+  ignoreEvent(event: Event): boolean {
+    if (this.kind !== 'task' || this.taskBoxFrom === undefined) return true;
+    if (event.type === 'contextmenu') return false;
+    return true;
+  }
+
   toDOM(view: EditorView) {
     const span = document.createElement('span');
     span.className = 'cm-live-preview-marker-widget';
@@ -107,6 +118,7 @@ class MarkerWidget extends WidgetType {
         const from = this.taskBoxFrom;
         const to = this.taskBoxTo;
         span.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
           e.preventDefault();
           e.stopPropagation();
           const doc = view.state.doc;
