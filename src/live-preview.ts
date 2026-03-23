@@ -2,10 +2,10 @@
  * Live preview extension for CodeMirror 6.
  *
  * Hides markdown syntax characters (e.g. **, ##, [[, ]]) via replace
- * decorations. All syntax is inline-scoped: decorations are only removed
- * for the specific syntax span the cursor is within, so moving around a
- * line doesn't disrupt unrelated formatted elements. Heading font sizes
- * are always applied; only the # prefix is inline-scoped.
+ * decorations. Hidden delimiters use a zero-width widget so they do not
+ * occupy horizontal space when not shown (faded) on the cursor line.
+ * Leading indent before headings/lists/blockquotes still uses an invisible
+ * copy of the real characters so wrapped lines and vertical motion stay stable.
  *
  * Currently handles: headings, blockquotes, bold, italic, wiki-links,
  * inline code, strikethrough, task checkboxes, and external links.
@@ -29,9 +29,8 @@ import { indentUnit, syntaxTree } from '@codemirror/language';
 // --- Widgets for replacing syntax tokens ---
 
 /**
- * Replaces a doc range with an invisible copy of the same text so horizontal
- * extent matches the real characters. `display:none` had zero width and broke
- * vertical cursor motion (ArrowUp skipped indented / hidden-indent lines).
+ * Invisible copy of source text — for leading indent only. Zero-width
+ * replacements broke vertical cursor motion on indented / wrapped lines.
  */
 class HiddenWidget extends WidgetType {
   constructor(readonly text: string) {
@@ -50,9 +49,28 @@ class HiddenWidget extends WidgetType {
   }
 }
 
-function hiddenRange(state: EditorState, from: number, to: number) {
+function layoutPreservingHiddenRange(state: EditorState, from: number, to: number) {
   return Decoration.replace({
     widget: new HiddenWidget(state.sliceDoc(from, to)),
+  }).range(from, to);
+}
+
+class CollapsedHiddenWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement('span');
+    span.className = 'cm-live-preview-collapsed-syntax';
+    span.setAttribute('aria-hidden', 'true');
+    return span;
+  }
+
+  eq(other: CollapsedHiddenWidget) {
+    return other instanceof CollapsedHiddenWidget;
+  }
+}
+
+function collapsedHiddenRange(from: number, to: number) {
+  return Decoration.replace({
+    widget: new CollapsedHiddenWidget(),
   }).range(from, to);
 }
 
@@ -75,12 +93,6 @@ class MarkerWidget extends WidgetType {
     readonly orderedLabel?: string,
   ) {
     super();
-  }
-
-  /** Let click/mousedown through so our task icon can receive them (default: widget ignores all events). */
-  ignoreEvent(event: Event): boolean {
-    if (this.kind !== 'task' || this.taskBoxFrom === undefined) return true;
-    return event.type !== 'click' && event.type !== 'mousedown';
   }
 
   toDOM(view: EditorView) {
@@ -166,7 +178,7 @@ for (let level = 1; level <= 6; level++) {
 
 const blockquoteLineDeco = Decoration.line({ class: 'cm-live-preview-blockquote' });
 /** Set to true to log every blockquote application (path, line number, line text) to console. */
-const DEBUG_BLOCKQUOTE = true;
+const DEBUG_BLOCKQUOTE = false;
 const setextUnsupportedLineDeco = Decoration.line({ class: 'cm-live-preview-setext-unsupported' });
 
 const listLineDeco = Decoration.line({ class: 'cm-live-preview-list-line' });
@@ -242,7 +254,7 @@ function buildDecorationsFromTree(
           const spaceCount = (leadingPart.match(/ /g) ?? []).length;
           const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
           decorations.push(indentLineDecos[indentLevel].range(line.from));
-          decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+          decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
         }
         return;
       }
@@ -270,7 +282,7 @@ function buildDecorationsFromTree(
           decorations.push(syntaxFade.range(from, fadeEnd));
         } else {
           const hideEnd = to < line.to && doc.sliceString(to, to + 1) === ' ' ? to + 1 : to;
-          decorations.push(hiddenRange(state, from, Math.min(hideEnd, line.to)));
+          decorations.push(collapsedHiddenRange(from, Math.min(hideEnd, line.to)));
         }
         return;
       }
@@ -303,11 +315,11 @@ function buildDecorationsFromTree(
               const spaceCount = (leadingPart.match(/ /g) ?? []).length;
               const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
               decorations.push(indentLineDecos[indentLevel].range(line.from));
-              decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+              decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
             }
             const markerStart = line.from + leadingLen;
             const markerEnd = markerStart + qMatch[2].length;
-            decorations.push(hiddenRange(state, markerStart, markerEnd));
+            decorations.push(collapsedHiddenRange(markerStart, markerEnd));
           }
           pos = line.to + 1;
         }
@@ -331,8 +343,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, contentFrom));
-            decorations.push(hiddenRange(state, contentTo, to));
+            decorations.push(collapsedHiddenRange(from, contentFrom));
+            decorations.push(collapsedHiddenRange(contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(contentFrom, contentTo));
         }
@@ -347,8 +359,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, contentFrom));
-            decorations.push(hiddenRange(state, contentTo, to));
+            decorations.push(collapsedHiddenRange(from, contentFrom));
+            decorations.push(collapsedHiddenRange(contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(contentFrom, contentTo));
         }
@@ -363,8 +375,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, contentFrom));
-            decorations.push(hiddenRange(state, contentTo, to));
+            decorations.push(collapsedHiddenRange(from, contentFrom));
+            decorations.push(collapsedHiddenRange(contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(contentFrom, contentTo));
         }
@@ -379,8 +391,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, contentFrom));
             decorations.push(syntaxFade.range(contentTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, contentFrom));
-            decorations.push(hiddenRange(state, contentTo, to));
+            decorations.push(collapsedHiddenRange(from, contentFrom));
+            decorations.push(collapsedHiddenRange(contentTo, to));
           }
           decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(contentFrom, contentTo));
         }
@@ -406,9 +418,9 @@ function buildDecorationsFromTree(
             decorations.push(linkMark);
             decorations.push(syntaxFade.range(linkTextTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, linkTextFrom));
+            decorations.push(collapsedHiddenRange(from, linkTextFrom));
             decorations.push(linkMark);
-            decorations.push(hiddenRange(state, linkTextTo, to));
+            decorations.push(collapsedHiddenRange(linkTextTo, to));
             decorations.push(Decoration.widget({
               widget: new LinkArrowWidget(url),
               side: 1,
@@ -428,8 +440,8 @@ function buildDecorationsFromTree(
             decorations.push(syntaxFade.range(from, urlFrom));
             decorations.push(syntaxFade.range(urlTo, to));
           } else {
-            decorations.push(hiddenRange(state, from, urlFrom));
-            decorations.push(hiddenRange(state, urlTo, to));
+            decorations.push(collapsedHiddenRange(from, urlFrom));
+            decorations.push(collapsedHiddenRange(urlTo, to));
           }
           decorations.push(Decoration.mark({
             class: 'cm-live-preview-extlink',
@@ -647,6 +659,25 @@ export function orderedListLineHasNoBody(lineText: string): boolean {
 export function isListLine(state: EditorState, lineNumber: number): boolean {
   const line = state.doc.line(lineNumber);
   return TASK_BULLET_REGEX.test(line.text) || ORDERED_LIST_REGEX.test(line.text);
+}
+
+/**
+ * Resolve list / task / ordered marker for one line (regex path; matches live preview when tree is stale).
+ * Used for task context menu and other line-scoped actions.
+ */
+export function resolveEditorListLine(state: EditorState, lineNumber: number): ResolvedListLine | null {
+  const line = state.doc.line(lineNumber);
+  const taskMatch = line.text.match(TASK_BULLET_REGEX);
+  const orderedMatch = line.text.match(ORDERED_LIST_REGEX);
+  let resolved: ResolvedListLine | null = taskMatch
+    ? resolveListLineFromRegex(line, taskMatch)
+    : orderedMatch
+      ? resolveOrderedListFromRegex(line, orderedMatch)
+      : null;
+  if (resolved?.kind === 'ordered') {
+    resolved = normalizeOrderedResolvedFromLineText(line, resolved);
+  }
+  return resolved;
 }
 
 // --- Ordered list run and renumbering (consecutive lines only) ---
@@ -932,7 +963,7 @@ function buildDecorations(
         const spaceCount = (leadingPart.match(/ /g) ?? []).length;
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+        decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
       const hashFrom = line.from + leadingLen;
       const hashFadeTo = Math.min(hashFrom + hashLen, line.to);
@@ -940,7 +971,7 @@ function buildDecorations(
       if (onCursorLine) {
         decorations.push(syntaxFade.range(hashFrom, hashFadeTo));
       } else {
-        decorations.push(hiddenRange(state, hashFrom, hashHideTo));
+        decorations.push(collapsedHiddenRange(hashFrom, hashHideTo));
       }
     }
 
@@ -963,11 +994,11 @@ function buildDecorations(
         const spaceCount = (leadingPart.match(/ /g) ?? []).length;
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+        decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
       const markerStart = line.from + leadingLen;
       const markerEnd = markerStart + quoteMarker.length;
-      decorations.push(hiddenRange(state, markerStart, markerEnd));
+      decorations.push(collapsedHiddenRange(markerStart, markerEnd));
       }
     }
 
@@ -985,7 +1016,7 @@ function buildDecorations(
         const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
         if (indentLevel >= 1) {
           decorations.push(indentLineDecos[indentLevel].range(line.from));
-          decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+          decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
         }
       }
     }
@@ -1015,7 +1046,7 @@ function buildDecorations(
 
       if (indentLevel >= 1 && leadingLen > 0) {
         decorations.push(indentLineDecos[indentLevel].range(line.from));
-        decorations.push(hiddenRange(state, line.from, line.from + leadingLen));
+        decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
 
       // Marker replace: only the marker (after leading whitespace), so we don't overlap with hidden.
@@ -1081,11 +1112,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - markerLen, end));
         } else {
-          decorations.push(hiddenRange(state, start, start + markerLen));
+          decorations.push(collapsedHiddenRange(start, start + markerLen));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-bold' }).range(
             start + markerLen, start + markerLen + match[2].length
           ));
-          decorations.push(hiddenRange(state, end - markerLen, end));
+          decorations.push(collapsedHiddenRange(end - markerLen, end));
         }
       }
 
@@ -1101,11 +1132,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 1, end));
         } else {
-          decorations.push(hiddenRange(state, start, start + 1));
+          decorations.push(collapsedHiddenRange(start, start + 1));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-italic' }).range(
             start + 1, start + 1 + content.length
           ));
-          decorations.push(hiddenRange(state, end - 1, end));
+          decorations.push(collapsedHiddenRange(end - 1, end));
         }
       }
 
@@ -1120,11 +1151,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 2, end));
         } else {
-          decorations.push(hiddenRange(state, start, start + 2));
+          decorations.push(collapsedHiddenRange(start, start + 2));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-strikethrough' }).range(
             start + 2, start + 2 + match[1].length
           ));
-          decorations.push(hiddenRange(state, end - 2, end));
+          decorations.push(collapsedHiddenRange(end - 2, end));
         }
       }
 
@@ -1139,11 +1170,11 @@ function buildDecorations(
           ));
           decorations.push(syntaxFade.range(end - 1, end));
         } else {
-          decorations.push(hiddenRange(state, start, start + 1));
+          decorations.push(collapsedHiddenRange(start, start + 1));
           decorations.push(Decoration.mark({ class: 'cm-live-preview-code' }).range(
             start + 1, start + 1 + match[2].length
           ));
-          decorations.push(hiddenRange(state, end - 1, end));
+          decorations.push(collapsedHiddenRange(end - 1, end));
         }
       }
     }
@@ -1162,9 +1193,9 @@ function buildDecorations(
         decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
         decorations.push(syntaxFade.range(end - 2, end));
       } else {
-        decorations.push(hiddenRange(state, start, start + 2));
+        decorations.push(collapsedHiddenRange(start, start + 2));
         decorations.push(linkMark.range(start + 2, start + 2 + linkTarget.length));
-        decorations.push(hiddenRange(state, end - 2, end));
+        decorations.push(collapsedHiddenRange(end - 2, end));
       }
     }
 
@@ -1189,12 +1220,12 @@ function buildDecorations(
             }).range(start + 1, linkEnd));
             decorations.push(syntaxFade.range(linkEnd, end));
           } else {
-            decorations.push(hiddenRange(state, start, start + 1));
+            decorations.push(collapsedHiddenRange(start, start + 1));
             decorations.push(Decoration.mark({
               class: 'cm-live-preview-extlink',
               attributes: { 'data-href': url },
             }).range(start + 1, linkEnd));
-            decorations.push(hiddenRange(state, linkEnd, end));
+            decorations.push(collapsedHiddenRange(linkEnd, end));
             /* Widget at end, side -1, so it appears after the link without overlapping the replace that starts at linkEnd */
             decorations.push(Decoration.widget({
               widget: new LinkArrowWidget(url),
@@ -1227,8 +1258,8 @@ function buildDecorations(
           decorations.push(syntaxFade.range(start, urlFrom));
           decorations.push(syntaxFade.range(urlTo, end));
         } else {
-          decorations.push(hiddenRange(state, start, urlFrom));
-          decorations.push(hiddenRange(state, urlTo, end));
+          decorations.push(collapsedHiddenRange(start, urlFrom));
+          decorations.push(collapsedHiddenRange(urlTo, end));
         }
         decorations.push(Decoration.mark({
           class: 'cm-live-preview-extlink',

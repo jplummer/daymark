@@ -19,6 +19,7 @@ import {
   taskMarkerClickHandler,
   orderedListBodyInsertFilter,
 } from './live-preview';
+import { taskContextMenuHandler } from './task-context-menu';
 import { listLineKeymapExtensions } from './editor-list-keymap';
 import {
   initSidebar,
@@ -673,6 +674,7 @@ const editorExtensions = [
     activateOnTyping: true,
   }),
   ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview, Prec.high(taskMarkerClickHandler)]),
+  Prec.high(taskContextMenuHandler),
   linkClickHandler,
   pasteUrlHandler,
 ];

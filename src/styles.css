@@ -31,7 +31,12 @@
   --hashtag-bg: rgba(74, 140, 63, 0.12);
   --scrollbar: #c0c0c0;
   --scrollbar-hover: #a0a0a0;
-  --bullet: #736B1E;
+  /* List bullets — matches NotePlan todo / warm marker tone */
+  --bullet: #ED3F1C;
+  /* Slightly below NotePlan JSON (16px) — matches ~one in-app zoom-out */
+  --editor-font-size: 14px;
+  --editor-line-height: 1.5;
+  --editor-line-gap: 0.35em;
   /* Live preview layout: n = marker width; content start = line-left + n; indent levels = multiples of n; zero-level list/blockquote and first-level indent wrap to same place. */
   --live-preview-line-left: 6px;
   --live-preview-marker-width: 3ch;
@@ -383,14 +388,14 @@ html, body {
 
 .cm-editor {
   height: 100%;
-  font-size: 16px;
+  font-size: var(--editor-font-size);
   background: var(--bg-primary);
 }
 
 .cm-editor .cm-scroller {
   padding: 16px 24px;
   font-family: 'SF Pro', 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
-  line-height: 1.4;
+  line-height: var(--editor-line-height);
 }
 
 .cm-editor .cm-content {
@@ -421,12 +426,12 @@ html, body {
   background: var(--selection);
 }
 
-/* ── Line spacing — padding for block feel on wrapped lines ── */
+/* ── Line spacing — per logical line; line-height handles intra-paragraph air ── */
 .cm-editor .cm-line {
-  padding-bottom: 8px;
+  padding-bottom: var(--editor-line-gap);
 }
 
-/* ── Live preview heading styles — New York serif, gold ── */
+/* ── Live preview heading styles — NotePlan scale (JP Dieter Rams New York ref) ── */
 
 .cm-line.cm-live-preview-h1,
 .cm-line.cm-live-preview-h2,
@@ -439,6 +444,18 @@ html, body {
   text-decoration: none;
 }
 
+.cm-line.cm-live-preview-h1,
+.cm-line.cm-live-preview-h2,
+.cm-line.cm-live-preview-h3 {
+  line-height: 1.25;
+}
+
+.cm-line.cm-live-preview-h4,
+.cm-line.cm-live-preview-h5,
+.cm-line.cm-live-preview-h6 {
+  line-height: var(--editor-line-height);
+}
+
 /* Override CM6 default syntax highlighting on heading lines */
 .cm-line.cm-live-preview-h1 span,
 .cm-line.cm-live-preview-h2 span,
@@ -449,12 +466,33 @@ html, body {
   text-decoration: none !important;
 }
 
-.cm-live-preview-h1 { font-size: 1.6em; font-weight: 600; }
-.cm-live-preview-h2 { font-size: 1.35em; font-weight: 600; }
-.cm-live-preview-h3 { font-size: 1.15em; font-weight: 600; }
-.cm-live-preview-h4 { font-size: 1.0em; font-weight: 600; }
-.cm-live-preview-h5 { font-size: 1.0em; font-weight: 600; }
-.cm-live-preview-h6 { font-size: 0.93em; font-weight: 600; }
+/* Same ratios as NotePlan JSON (28/24/20/16 at 16px); em ties to --editor-font-size */
+.cm-live-preview-h1 {
+  font-size: 1.75em;
+  font-weight: 600;
+  padding-top: 0.65em;
+  padding-bottom: 0.3em;
+}
+.cm-live-preview-h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  padding-top: 0.5em;
+  padding-bottom: 0.25em;
+}
+.cm-live-preview-h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  padding-top: 0.4em;
+  padding-bottom: 0.2em;
+}
+.cm-live-preview-h4,
+.cm-live-preview-h5,
+.cm-live-preview-h6 {
+  font-size: 1em;
+  font-weight: 600;
+  padding-top: 0.25em;
+  padding-bottom: 0.1em;
+}
 
 /* Setext headings unsupported — override syntax highlighter so both lines look like body text */
 .cm-line.cm-live-preview-setext-unsupported,
@@ -478,11 +516,25 @@ html, body {
   color: var(--syntax-fade) !important;
 }
 
-/* Invisible stand-in for replaced syntax/indent: keeps layout width for coordsAtPos / vertical arrows */
+/* Invisible copy of leading indent — keeps wrap width for coords / vertical motion */
 .cm-live-preview-hidden-text {
   opacity: 0;
   font: inherit;
   white-space: pre;
+  pointer-events: none;
+}
+
+/* Zero-width placeholder for hidden markdown delimiters */
+.cm-live-preview-collapsed-syntax {
+  display: inline;
+  width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+  vertical-align: baseline;
   pointer-events: none;
 }
 
@@ -578,8 +630,13 @@ html, body {
 
 .cm-live-preview-marker-bullet {
   color: var(--bullet);
-  font-size: 1.1em;
+  font-size: 1.35em;
   vertical-align: middle;
+}
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-1 .cm-live-preview-marker-bullet,
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-2 .cm-live-preview-marker-bullet,
+.cm-editor .cm-line.cm-live-preview-list-line.cm-live-preview-indent-3 .cm-live-preview-marker-bullet {
+  font-size: 1.2em;
 }
 
 /* Ordered: baseline-align with body text; gap before list content (replace hides trailing space in doc). */
@@ -589,7 +646,7 @@ html, body {
   margin-right: 0.4em;
 }
 .cm-live-preview-marker-ordered {
-  color: var(--text-muted);
+  color: var(--bullet);
   font-size: 1em;
   text-align: right;
 }
@@ -612,7 +669,7 @@ html, body {
 .cm-live-preview-marker-task-cancelled i,
 .cm-live-preview-marker-task-scheduled i { color: var(--text-muted); }
 .cm-live-preview-marker-widget i {
-  font-size: 1.1em;
+  font-size: 1.3em;
   vertical-align: middle;
 }
 
@@ -639,7 +696,7 @@ html, body {
   top: 0;
   bottom: 0;
   width: 3px;
-  background: var(--text-muted);
+  background: color-mix(in srgb, var(--heading) 42%, var(--bg-primary));
   border-radius: 1px;
   pointer-events: none;
 }
@@ -916,6 +973,37 @@ html, body {
   font-size: 14px;
   font-style: italic;
   padding: 24px 0;
+}
+
+/* Task line context menu (right-click) */
+.task-context-menu {
+  position: fixed;
+  z-index: 10000;
+  min-width: 200px;
+  padding: 4px 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+}
+
+.task-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.task-context-menu-item:hover,
+.task-context-menu-item:focus {
+  background: var(--bg-hover);
+  outline: none;
 }
 
 ::-webkit-scrollbar {
