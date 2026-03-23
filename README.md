@@ -44,7 +44,14 @@ The app window opens; Vite runs the frontend and Tauri runs the shell.
 
 **Build for production:** `npm run tauri build` (output in `src-tauri/target/release/`).
 
+**Frontend only (no Tauri):** `npm run dev` starts Vite alone. Use this for quick UI/editor iteration; filesystem and native APIs need `npm run tauri dev`.
+
 ## Development
+
+- **Tests:** `npm test` runs Vitest once; `npm run test:watch` re-runs on changes. Specs live next to sources (e.g. `src/editor-list-keymap.test.ts`).
+- **Typecheck + web build:** `npm run build` runs `tsc` and `vite build`.
+- **Planning and product context:** `planning/PLAN.md` (roadmap and phases), `planning/FEATURES.md` (prioritized capabilities), `planning/KNOWLEDGE.md` (decisions and conventions).
+- **Release notes:** [CHANGELOG.md](CHANGELOG.md) summarizes notable changes by version.
 
 ## License
 
