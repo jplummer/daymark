@@ -70,8 +70,64 @@ async function readTree(relDir: string, excludeSpecial = false): Promise<TreeNod
   return nodes;
 }
 
-// Recent is a virtual folder (same look/behaviour as Archive); key for open state
-const RECENT_FOLDER_KEY = '__recent__';
+// Recent is a virtual folder (same look/behaviour as Archive); key for open state and nav history
+export const RECENT_FOLDER_KEY = '__recent__';
+
+export type SidebarHandlers = {
+  onOpenNote: (node: TreeNode) => void;
+  onOpenFolder: (node: TreeNode) => void;
+};
+
+/** After `childContainer.classList.toggle('open')`, persist arrow and optional standard folder icon. */
+function afterFolderToggle(
+  relPath: string,
+  arrow: HTMLElement,
+  standardFolderIcon: HTMLElement | null,
+  nowOpen: boolean,
+): void {
+  if (nowOpen) {
+    openFolders.add(relPath);
+  } else {
+    openFolders.delete(relPath);
+  }
+  arrow.className = nowOpen
+    ? 'ri-arrow-down-s-line tree-item-arrow'
+    : 'ri-arrow-right-s-line tree-item-arrow';
+  if (standardFolderIcon) {
+    standardFolderIcon.className = nowOpen
+      ? 'ri-folder-open-line tree-item-icon'
+      : 'ri-folder-line tree-item-icon';
+  }
+  persistSidebarState();
+}
+
+function ensureNormalFolderExpanded(
+  relPath: string,
+  childContainer: HTMLElement,
+  arrow: HTMLElement,
+  icon: HTMLElement,
+): void {
+  if (!childContainer.classList.contains('open')) {
+    childContainer.classList.add('open');
+  }
+  openFolders.add(relPath);
+  arrow.className = 'ri-arrow-down-s-line tree-item-arrow';
+  icon.className = 'ri-folder-open-line tree-item-icon';
+  persistSidebarState();
+}
+
+function ensureSpecialFolderExpanded(
+  relPath: string,
+  childContainer: HTMLElement,
+  arrow: HTMLElement,
+): void {
+  if (!childContainer.classList.contains('open')) {
+    childContainer.classList.add('open');
+  }
+  openFolders.add(relPath);
+  arrow.className = 'ri-arrow-down-s-line tree-item-arrow';
+  persistSidebarState();
+}
 
 // Icon mappings for special folders (including virtual Recent)
 const SPECIAL_FOLDER_ICONS: Record<string, string> = {
@@ -85,7 +141,7 @@ function renderTree(
   container: HTMLElement,
   nodes: TreeNode[],
   depth: number,
-  onNavigate: (node: TreeNode) => void,
+  handlers: SidebarHandlers,
 ): void {
   for (const node of nodes) {
     const indent = 12 + depth * 18;
@@ -122,20 +178,16 @@ function renderTree(
       const childContainer = document.createElement('div');
       childContainer.className = `tree-folder-children${isOpen ? ' open' : ''}`;
 
-      item.addEventListener('click', () => {
+      arrow.addEventListener('click', (e) => {
+        e.stopPropagation();
         const nowOpen = childContainer.classList.toggle('open');
-        if (nowOpen) {
-          openFolders.add(node.relPath);
-        } else {
-          openFolders.delete(node.relPath);
-        }
-        arrow.className = nowOpen
-          ? 'ri-arrow-down-s-line tree-item-arrow'
-          : 'ri-arrow-right-s-line tree-item-arrow';
-        icon.className = nowOpen
-          ? 'ri-folder-open-line tree-item-icon'
-          : 'ri-folder-line tree-item-icon';
-        persistSidebarState();
+        afterFolderToggle(node.relPath, arrow, icon, nowOpen);
+      });
+
+      item.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.tree-item-arrow')) return;
+        ensureNormalFolderExpanded(node.relPath, childContainer, arrow, icon);
+        handlers.onOpenFolder(node);
       });
 
       folder.appendChild(item);
@@ -143,7 +195,7 @@ function renderTree(
       container.appendChild(folder);
 
       if (node.children) {
-        renderTree(childContainer, node.children, depth + 1, onNavigate);
+        renderTree(childContainer, node.children, depth + 1, handlers);
       }
     } else {
       const item = document.createElement('div');
@@ -166,7 +218,7 @@ function renderTree(
       item.appendChild(icon);
       item.appendChild(label);
 
-      item.addEventListener('click', () => onNavigate(node));
+      item.addEventListener('click', () => handlers.onOpenNote(node));
       container.appendChild(item);
     }
   }
@@ -175,7 +227,7 @@ function renderTree(
 function renderSpecialFolders(
   container: HTMLElement,
   specialNodes: TreeNode[],
-  onNavigate: (node: TreeNode) => void,
+  handlers: SidebarHandlers,
 ): void {
   for (const node of specialNodes) {
     const item = document.createElement('div');
@@ -204,17 +256,16 @@ function renderSpecialFolders(
     const childContainer = document.createElement('div');
     childContainer.className = `tree-folder-children${isOpen ? ' open' : ''}`;
 
-    item.addEventListener('click', () => {
+    arrow.addEventListener('click', (e) => {
+      e.stopPropagation();
       const nowOpen = childContainer.classList.toggle('open');
-      if (nowOpen) {
-        openFolders.add(node.relPath);
-      } else {
-        openFolders.delete(node.relPath);
-      }
-      arrow.className = nowOpen
-        ? 'ri-arrow-down-s-line tree-item-arrow'
-        : 'ri-arrow-right-s-line tree-item-arrow';
-      persistSidebarState();
+      afterFolderToggle(node.relPath, arrow, null, nowOpen);
+    });
+
+    item.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.tree-item-arrow')) return;
+      ensureSpecialFolderExpanded(node.relPath, childContainer, arrow);
+      handlers.onOpenFolder(node);
     });
 
     const wrapper = document.createElement('div');
@@ -225,7 +276,7 @@ function renderSpecialFolders(
     container.appendChild(wrapper);
 
     if (node.children) {
-      renderTree(childContainer, node.children, 1, onNavigate);
+      renderTree(childContainer, node.children, 1, handlers);
     }
   }
 }
@@ -242,7 +293,7 @@ export function setActiveTreeItem(relPath: string): void {
 }
 
 // Persistent state across refreshes
-let sidebarNavigateCallback: ((node: TreeNode) => void) | null = null;
+let sidebarHandlers: SidebarHandlers | null = null;
 const openFolders = new Set<string>();
 
 function buildRecentChildren(): TreeNode[] {
@@ -252,6 +303,23 @@ function buildRecentChildren(): TreeNode[] {
     const title = entry?.title ?? filename.replace(/\.txt$/, '');
     return { name: filename, title, relPath, isDir: false };
   });
+}
+
+/** Direct `.txt` notes in a folder (non-recursive), or Recent virtual folder entries. */
+export async function getFolderListingNodes(folderRelPath: string): Promise<TreeNode[]> {
+  if (folderRelPath === RECENT_FOLDER_KEY) {
+    return buildRecentChildren();
+  }
+  const entries = await readDir(folderRelPath, { baseDir: BaseDirectory.Home });
+  const files = entries.filter((e) => !e.isDirectory && e.name.endsWith('.txt'));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  const nodes: TreeNode[] = [];
+  for (const e of files) {
+    const childPath = `${folderRelPath}/${e.name}`;
+    const title = await extractTitle(childPath, e.name);
+    nodes.push({ name: e.name, title, relPath: childPath, isDir: false });
+  }
+  return nodes;
 }
 
 async function buildSpecialNodes(notesPath: string, allEntries: { name: string; isDirectory: boolean }[]): Promise<TreeNode[]> {
@@ -282,7 +350,7 @@ async function buildSpecialNodes(notesPath: string, allEntries: { name: string; 
   return specialNodes;
 }
 
-async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
+async function buildSidebar(handlers: SidebarHandlers): Promise<void> {
   const treeContainer = document.getElementById('sidebar-tree');
   const specialContainer = document.getElementById('sidebar-special');
   if (!treeContainer) return;
@@ -297,19 +365,19 @@ async function buildSidebar(onNavigate: (node: TreeNode) => void): Promise<void>
   const specialNodes = await buildSpecialNodes(notesPath, allEntries);
 
   treeContainer.textContent = '';
-  renderTree(treeContainer, mainTree, 0, onNavigate);
+  renderTree(treeContainer, mainTree, 0, handlers);
 
   if (specialContainer) {
     specialContainer.textContent = '';
     if (specialNodes.length > 0) {
-      renderSpecialFolders(specialContainer, specialNodes, onNavigate);
+      renderSpecialFolders(specialContainer, specialNodes, handlers);
     }
   }
 }
 
 /** Rebuild and re-render only the special section (e.g. after Recent list changes). */
 export async function refreshSpecialSection(): Promise<void> {
-  if (!sidebarNavigateCallback) return;
+  if (!sidebarHandlers) return;
   const specialContainer = document.getElementById('sidebar-special');
   if (!specialContainer) return;
   const notesPath = `${NOTEPLAN_BASE}/Notes`;
@@ -317,19 +385,19 @@ export async function refreshSpecialSection(): Promise<void> {
   const specialNodes = await buildSpecialNodes(notesPath, allEntries);
   specialContainer.textContent = '';
   if (specialNodes.length > 0) {
-    renderSpecialFolders(specialContainer, specialNodes, sidebarNavigateCallback);
+    renderSpecialFolders(specialContainer, specialNodes, sidebarHandlers);
   }
 }
 
-export async function initSidebar(onNavigate: (node: TreeNode) => void): Promise<void> {
-  sidebarNavigateCallback = onNavigate;
+export async function initSidebar(handlers: SidebarHandlers): Promise<void> {
+  sidebarHandlers = handlers;
   const treeContainer = document.getElementById('sidebar-tree');
   if (!treeContainer) return;
 
   treeContainer.textContent = 'Loading…';
 
   try {
-    await buildSidebar(onNavigate);
+    await buildSidebar(handlers);
   } catch (err) {
     console.error('[daymark] Failed to load sidebar:', err);
     treeContainer.textContent = 'Failed to load notes';
@@ -337,13 +405,13 @@ export async function initSidebar(onNavigate: (node: TreeNode) => void): Promise
 }
 
 export async function refreshSidebar(): Promise<void> {
-  if (!sidebarNavigateCallback) return;
+  if (!sidebarHandlers) return;
 
   const scrollEl = document.getElementById('sidebar-scroll');
   const scrollTop = scrollEl?.scrollTop ?? 0;
 
   try {
-    await buildSidebar(sidebarNavigateCallback);
+    await buildSidebar(sidebarHandlers);
   } catch (err) {
     console.error('[daymark] Failed to refresh sidebar:', err);
   }

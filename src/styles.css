@@ -321,6 +321,31 @@ html, body {
   cursor: default;
 }
 
+.toolbar-format {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border-right: 1px solid var(--border);
+  margin-right: 4px;
+}
+
+.toolbar-fmt-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 17px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.toolbar-fmt-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 #note-title {
   font-weight: 600;
   color: var(--text-primary);
@@ -668,6 +693,12 @@ html, body {
 .cm-live-preview-marker-task-done i,
 .cm-live-preview-marker-task-cancelled i,
 .cm-live-preview-marker-task-scheduled i { color: var(--text-muted); }
+
+/* Checklist (+): square icons, same colors as tasks */
+.cm-live-preview-marker-checklist-open i { color: var(--red); }
+.cm-live-preview-marker-checklist-done i,
+.cm-live-preview-marker-checklist-cancelled i,
+.cm-live-preview-marker-checklist-scheduled i { color: var(--text-muted); }
 .cm-live-preview-marker-widget i {
   font-size: 1.3em;
   vertical-align: middle;

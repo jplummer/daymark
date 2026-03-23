@@ -30,6 +30,7 @@ import {
   refreshMentionsSidebar,
   renderHashtagsSidebar,
   refreshHashtagsSidebar,
+  getFolderListingNodes,
   TreeNode,
 } from './sidebar';
 import { noteIndex, SearchResult } from './note-index';
@@ -52,7 +53,8 @@ interface NoteLocation {
 
 type NavEntry =
   | { kind: 'note'; note: NoteLocation }
-  | { kind: 'search'; term: string };
+  | { kind: 'search'; term: string }
+  | { kind: 'folder'; relPath: string; displayTitle: string };
 
 // --- Date helpers ---
 
@@ -255,6 +257,8 @@ async function loadFile(relPath: string): Promise<string> {
 function navigateToEntry(entry: NavEntry) {
   if (entry.kind === 'search') {
     showTagSearch(entry.term, false);
+  } else if (entry.kind === 'folder') {
+    showFolderIndex(entry.relPath, entry.displayTitle, false);
   } else {
     navigateTo(entry.note, false);
   }
@@ -444,8 +448,135 @@ const pasteUrlHandler = EditorView.domEventHandlers({
 // --- Tag search (shared by @mentions and #hashtags) ---
 
 let searchActive = false;
+let folderIndexActive = false;
 let hideDoneInSearch = true;
 let showArchivedInSearch = false;
+
+function bodyPreviewFromText(text: string): string {
+  const lines = text.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length && !lines[i].trim()) i++;
+  if (i < lines.length && /^\s*#\s+/.test(lines[i])) {
+    i++;
+    while (i < lines.length && !lines[i].trim()) i++;
+  }
+  if (i >= lines.length) return '';
+  return lines[i].trim().slice(0, 220);
+}
+
+async function readBodyPreview(relPath: string): Promise<string> {
+  try {
+    const text = await readTextFile(relPath, { baseDir: BaseDirectory.Home });
+    const head = text.slice(0, 4000);
+    return bodyPreviewFromText(head);
+  } catch {
+    return '';
+  }
+}
+
+function updateToolbarFolderIndex(displayTitle: string) {
+  const titleEl = document.getElementById('note-title');
+  const dateNav = document.getElementById('nav-date');
+  if (titleEl) {
+    titleEl.textContent = displayTitle;
+  }
+  if (dateNav) {
+    dateNav.classList.add('hidden');
+  }
+  document.getElementById('link-daily')?.classList.remove('active');
+  document.getElementById('link-weekly')?.classList.remove('active');
+  updateHistoryButtons();
+}
+
+async function showFolderIndex(folderRelPath: string, displayTitle: string, addToHistory = true) {
+  await flushSave();
+
+  const container = document.getElementById('search-results')!;
+  const editorEl = document.getElementById('editor')!;
+  const backlinksPanel = document.getElementById('backlinks-panel');
+
+  folderIndexActive = true;
+  searchActive = false;
+
+  container.textContent = '';
+  container.classList.remove('hidden');
+  editorEl.style.display = 'none';
+  if (backlinksPanel) backlinksPanel.classList.add('hidden');
+
+  if (addToHistory) {
+    navHistory.splice(navIndex + 1);
+    navHistory.push({ kind: 'folder', relPath: folderRelPath, displayTitle });
+    navIndex = navHistory.length - 1;
+  }
+  updateHistoryButtons();
+  updateToolbarFolderIndex(displayTitle);
+
+  const header = document.createElement('div');
+  header.className = 'search-header';
+
+  const title = document.createElement('span');
+  title.className = 'search-header-mention';
+  title.textContent = displayTitle;
+
+  const countEl = document.createElement('span');
+  countEl.className = 'search-header-count';
+  countEl.textContent = 'Loading…';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'search-header-close';
+  closeBtn.title = 'Close (Esc)';
+  closeBtn.innerHTML = '<i class="ri-close-line"></i>';
+  closeBtn.addEventListener('click', closeSearch);
+
+  header.appendChild(title);
+  header.appendChild(countEl);
+  header.appendChild(closeBtn);
+  container.appendChild(header);
+
+  const resultsArea = document.createElement('div');
+  resultsArea.className = 'search-results-area';
+  container.appendChild(resultsArea);
+
+  const nodes = await getFolderListingNodes(folderRelPath);
+  const previews = await Promise.all(nodes.map((n) => readBodyPreview(n.relPath)));
+
+  resultsArea.textContent = '';
+
+  if (nodes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'search-empty';
+    empty.textContent = 'No notes in this folder.';
+    resultsArea.appendChild(empty);
+    countEl.textContent = '0 notes';
+  } else {
+    countEl.textContent = `${nodes.length} note${nodes.length === 1 ? '' : 's'}`;
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const previewText = previews[i];
+
+      const group = document.createElement('div');
+      group.className = 'search-note-group';
+
+      const noteTitle = document.createElement('div');
+      noteTitle.className = 'search-note-title';
+      noteTitle.innerHTML = `<i class="ri-file-text-line"></i> ${escapeHtml(node.title)}`;
+      noteTitle.addEventListener('click', () => {
+        navigateTo(projectNote(node));
+      });
+      group.appendChild(noteTitle);
+
+      const lineEl = document.createElement('div');
+      lineEl.className = 'search-line folder-index-preview';
+      lineEl.textContent = previewText || '—';
+      lineEl.addEventListener('click', () => {
+        navigateTo(projectNote(node));
+      });
+      group.appendChild(lineEl);
+
+      resultsArea.appendChild(group);
+    }
+  }
+}
 
 function searchFnForTerm(term: string): Promise<SearchResult[]> {
   if (term.startsWith('#')) return noteIndex.searchHashtag(term);
@@ -461,6 +592,7 @@ function showTagSearch(term: string, addToHistory = true) {
   container.classList.remove('hidden');
   editorEl.style.display = 'none';
   if (backlinksPanel) backlinksPanel.classList.add('hidden');
+  folderIndexActive = false;
   searchActive = true;
 
   if (addToHistory) {
@@ -592,7 +724,7 @@ function renderSearchResults(
 
     for (const line of visibleForNote) {
       const lineEl = document.createElement('div');
-      lineEl.className = `search-line${line.isDone ? ' done' : ''}`;
+      lineEl.className = `search-line${line.isDone ? ' done' : ''}${line.isChecklist ? ' search-line-checklist' : ''}`;
       lineEl.textContent = line.text.trim();
       lineEl.addEventListener('click', () => {
         closeSearch();
@@ -631,6 +763,30 @@ function renderSearchResults(
   }
 }
 
+function insertListMarkerAtLineBodyStart(prefix: '- [ ] ' | '+ [ ] ') {
+  if (!view) return;
+  const { state } = view;
+  const line = state.doc.lineAt(state.selection.main.head);
+  const lead = line.text.match(/^(\s*)/)?.[1] ?? '';
+  const at = line.from + lead.length;
+  view.dispatch({
+    changes: { from: at, to: at, insert: prefix },
+    selection: { anchor: at + prefix.length },
+    scrollIntoView: true,
+  });
+  scheduleSave();
+  view.focus();
+}
+
+function wireFormattingToolbar() {
+  document.getElementById('fmt-task-line')?.addEventListener('click', () => {
+    insertListMarkerAtLineBodyStart('- [ ] ');
+  });
+  document.getElementById('fmt-checklist-line')?.addEventListener('click', () => {
+    insertListMarkerAtLineBodyStart('+ [ ] ');
+  });
+}
+
 function closeSearch() {
   const container = document.getElementById('search-results')!;
   const editorEl = document.getElementById('editor')!;
@@ -638,6 +794,10 @@ function closeSearch() {
   container.textContent = '';
   editorEl.style.display = '';
   searchActive = false;
+  folderIndexActive = false;
+  if (currentNote) {
+    updateToolbar(currentNote);
+  }
   updateHistoryButtons();
   view?.focus();
 }
@@ -753,14 +913,15 @@ async function navigateTo(note: NoteLocation, addToHistory = true, targetLine?: 
     pendingScrollRAF = null;
   }
 
-  // If we're leaving a search view to go to a note, close the search UI
-  if (searchActive) {
+  // If we're leaving search or folder index for a note, close the overlay
+  if (searchActive || folderIndexActive) {
     const container = document.getElementById('search-results')!;
     const editorEl = document.getElementById('editor')!;
     container.classList.add('hidden');
     container.textContent = '';
     editorEl.style.display = '';
     searchActive = false;
+    folderIndexActive = false;
   }
 
   await flushSave();
@@ -809,7 +970,7 @@ async function navigateTo(note: NoteLocation, addToHistory = true, targetLine?: 
 }
 
 function updateBacklinksPanel(relPath: string) {
-  if (searchActive) return;
+  if (searchActive || folderIndexActive) return;
   const panel = document.getElementById('backlinks-panel');
   const list = document.getElementById('backlinks-list');
   const title = document.getElementById('backlinks-title');
@@ -976,7 +1137,10 @@ function wireNavButtons() {
   document.addEventListener('keydown', (e) => {
     if (e.metaKey && e.key === '[') { e.preventDefault(); goBack(); }
     if (e.metaKey && e.key === ']') { e.preventDefault(); goForward(); }
-    if (e.key === 'Escape' && searchActive) { e.preventDefault(); closeSearch(); }
+    if (e.key === 'Escape' && (searchActive || folderIndexActive)) {
+      e.preventDefault();
+      closeSearch();
+    }
   });
 }
 
@@ -994,11 +1158,17 @@ function wireBacklinksPanel() {
 
 async function init() {
   wireNavButtons();
+  wireFormattingToolbar();
   wireResizeHandle();
   wireBacklinksPanel();
 
-  const sidebarReady = initSidebar((node: TreeNode) => {
-    navigateTo(projectNote(node));
+  const sidebarReady = initSidebar({
+    onOpenNote: (node: TreeNode) => {
+      navigateTo(projectNote(node));
+    },
+    onOpenFolder: (node: TreeNode) => {
+      showFolderIndex(node.relPath, node.title);
+    },
   });
 
   // Build note index in parallel with first navigation

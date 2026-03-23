@@ -8,7 +8,8 @@
  * copy of the real characters so wrapped lines and vertical motion stay stable.
  *
  * Currently handles: headings, blockquotes, bold, italic, wiki-links,
- * inline code, strikethrough, task checkboxes, and external links.
+ * inline code, strikethrough, task checkboxes (`- [ ]`), checklist items
+ * (`+ [ ]`, square icons), and external links.
  *
  * Styling is hard-coded for now. The decoration styles live in
  * styles.css under .cm-live-preview-* classes, and can be made
@@ -82,6 +83,14 @@ const TASK_ICON_CLASS: Record<TaskState, string> = {
   scheduled: 'ri-arrow-right-circle-line',
 };
 
+/** Checklist (`+ [ ]`): same states as tasks, square glyphs (not reviewed as open tasks). */
+const CHECKLIST_ICON_CLASS: Record<TaskState, string> = {
+  open: 'ri-checkbox-blank-line',
+  done: 'ri-checkbox-line',
+  cancelled: 'ri-checkbox-indeterminate-line',
+  scheduled: 'ri-arrow-right-box-line',
+};
+
 /** Inline widget that replaces the list/task marker range. CM6 treats replaced range as atomic. */
 class MarkerWidget extends WidgetType {
   constructor(
@@ -101,7 +110,7 @@ class MarkerWidget extends WidgetType {
    * `eventBelongsToEditor` bails and `domEventHandlers.contextmenu` (task line menu) never runs.
    */
   ignoreEvent(event: Event): boolean {
-    if (this.kind !== 'task' || this.taskBoxFrom === undefined) return true;
+    if ((this.kind !== 'task' && this.kind !== 'checklist') || this.taskBoxFrom === undefined) return true;
     if (event.type === 'contextmenu') return false;
     return true;
   }
@@ -109,8 +118,12 @@ class MarkerWidget extends WidgetType {
   toDOM(view: EditorView) {
     const span = document.createElement('span');
     span.className = 'cm-live-preview-marker-widget';
-    if (this.kind === 'task' && this.taskState !== undefined) {
-      span.classList.add(`cm-live-preview-marker-task-${this.taskState}`);
+    if ((this.kind === 'task' || this.kind === 'checklist') && this.taskState !== undefined) {
+      span.classList.add(
+        this.kind === 'checklist'
+          ? `cm-live-preview-marker-checklist-${this.taskState}`
+          : `cm-live-preview-marker-task-${this.taskState}`,
+      );
       if (this.taskBoxFrom !== undefined && this.taskBoxTo !== undefined) {
         span.dataset.taskBoxFrom = String(this.taskBoxFrom);
         span.dataset.taskBoxTo = String(this.taskBoxTo);
@@ -134,7 +147,10 @@ class MarkerWidget extends WidgetType {
         });
       }
       const i = document.createElement('i');
-      i.className = TASK_ICON_CLASS[this.taskState];
+      i.className =
+        this.kind === 'checklist'
+          ? CHECKLIST_ICON_CLASS[this.taskState]
+          : TASK_ICON_CLASS[this.taskState];
       span.appendChild(i);
     } else if (this.kind === 'bullet') {
       span.classList.add('cm-live-preview-marker-bullet');
@@ -211,7 +227,7 @@ interface ListLineInfo {
   taskMarker?: { from: number; to: number };
 }
 
-export type ListLineKind = 'task' | 'bullet' | 'ordered';
+export type ListLineKind = 'task' | 'checklist' | 'bullet' | 'ordered';
 export type TaskState = 'open' | 'done' | 'cancelled' | 'scheduled';
 
 export interface ResolvedListLine {
@@ -219,7 +235,7 @@ export interface ResolvedListLine {
   taskState?: TaskState;
   markerFrom: number;
   markerTo: number;
-  /** For tasks: doc range of the "[ ]" / "[x]" etc. box (for click-to-toggle). */
+  /** For tasks/checklists: doc range of the "[ ]" / "[x]" etc. box (for click-to-toggle). */
   taskBoxFrom?: number;
   taskBoxTo?: number;
   /** For ordered lists: marker text to show in widget (e.g. "1." or "10)"). */
@@ -499,7 +515,8 @@ function buildDecorationsFromTree(
     let taskBoxFrom: number | undefined;
     let taskBoxTo: number | undefined;
     if (isGfmTask && taskMarker) {
-      kind = 'task';
+      const markHead = listMarkText.trimStart();
+      kind = markHead.startsWith('+') ? 'checklist' : 'task';
       markerTo = taskMarker.to;
       if (doc.sliceString(taskMarker.to, taskMarker.to + 1) === ' ') markerTo = taskMarker.to + 1;
       const box = doc.sliceString(taskMarker.from, taskMarker.to);
@@ -530,7 +547,8 @@ function buildDecorationsFromTree(
 // bold/italic/strikethrough/inline code, [text](url) links, and <url> autolinks. Falls back to
 // regex for those when tree is incomplete. Wiki-links, @mentions, #hashtags remain regex-only.
 
-const TASK_BULLET_REGEX = /^(\s*)([-+] \[([x\->  ])\] |(\*) |([-+]) )/;
+/** Group 2: `* ` bullet; 3+4: `- [ ]` / `+ [ ]` (list char + bracket char); 5: `- ` / `+ ` shortcut. */
+export const TASK_BULLET_REGEX = /^(\s*)(?:(\*) |([-+]) \[([x\->  ])\] |([-+]) )/;
 /** Ordered list: leading whitespace + "1. " or "2) " etc. Groups: (1) leading, (2) digits, (3) delimiter. Trailing \\s* so "4)Four" still parses (marker end = match length; renumber inserts a space). */
 export const ORDERED_LIST_REGEX = /^(\s*)(\d+)([.)])\s*/;
 
@@ -608,27 +626,46 @@ export const orderedListBodyInsertFilter = EditorState.transactionFilter.of((tr:
 
 function resolveListLineFromRegex(line: { from: number; text: string }, taskMatch: RegExpMatchArray): ResolvedListLine {
   const leadLen = taskMatch[1].length;
-  const markerLen = taskMatch[2].length;
   const markerFrom = line.from + leadLen;
-  const markerTo = line.from + leadLen + markerLen;
-  if (taskMatch[4]) return { kind: 'bullet', markerFrom, markerTo };
-  if (taskMatch[3] !== undefined) {
-    const ch = taskMatch[3];
+  const markerTo = line.from + taskMatch[0].length;
+  if (taskMatch[2]) return { kind: 'bullet', markerFrom, markerTo };
+  if (taskMatch[3] !== undefined && taskMatch[4] !== undefined) {
+    const listChar = taskMatch[3];
+    const ch = taskMatch[4];
+    const kind: ListLineKind = listChar === '+' ? 'checklist' : 'task';
     let taskState: TaskState = 'open';
     if (ch === 'x') taskState = 'done';
     else if (ch === '-') taskState = 'cancelled';
     else if (ch === '>') taskState = 'scheduled';
-    const taskBoxFrom = markerFrom + 2; // after "- " or "* "
+    const taskBoxFrom = markerFrom + 2; // after "- " or "+ "
     const taskBoxLen = ch === '-' || ch === '>' ? 4 : 3; // "[-]" "[>]" vs "[ ]" "[x]"
-    return { kind: 'task', taskState, markerFrom, markerTo, taskBoxFrom, taskBoxTo: taskBoxFrom + taskBoxLen };
+    return { kind, taskState, markerFrom, markerTo, taskBoxFrom, taskBoxTo: taskBoxFrom + taskBoxLen };
   }
-  if (taskMatch[5]) {
-    // Shortcut task "- " or "+ ": no literal [ ] in doc; use insertion point so click inserts "[x] ".
+  if (taskMatch[5] !== undefined) {
+    const listChar = taskMatch[5];
+    const kind: ListLineKind = listChar === '+' ? 'checklist' : 'task';
     const taskBoxFrom = markerTo;
     const taskBoxTo = markerTo;
-    return { kind: 'task', taskState: 'open', markerFrom, markerTo, taskBoxFrom, taskBoxTo };
+    return { kind, taskState: 'open', markerFrom, markerTo, taskBoxFrom, taskBoxTo };
   }
   return { kind: 'bullet', markerFrom, markerTo };
+}
+
+/** Next-line marker when pressing Enter on a matching list line (task vs checklist vs bullet). */
+export function taskBulletEnterContinuation(lineText: string): '* ' | '+ [ ] ' | '- [ ] ' | null {
+  const m = lineText.match(TASK_BULLET_REGEX);
+  if (!m) return null;
+  if (m[2]) return '* ';
+  if (m[3] !== undefined) return m[3] === '+' ? '+ [ ] ' : '- [ ] ';
+  if (m[5] !== undefined) return m[5] === '+' ? '+ [ ] ' : '- [ ] ';
+  return null;
+}
+
+/** True when the line is a `+ [ ]` / `+ ` checklist row (excluded from task-style review aggregates). */
+export function isChecklistListLineText(text: string): boolean {
+  const m = text.match(TASK_BULLET_REGEX);
+  if (!m) return false;
+  return resolveListLineFromRegex({ from: 0, text }, m).kind === 'checklist';
 }
 
 function resolveOrderedListFromRegex(line: { from: number; text: string }, orderedMatch: RegExpMatchArray): ResolvedListLine {
@@ -1041,12 +1078,13 @@ function buildDecorations(
     }
     if (resolved) {
       decorations.push(listLineDeco.range(line.from));
-      if (resolved.kind === 'task' && resolved.taskState === 'done') decorations.push(doneTaskLineDeco.range(line.from));
-      if (resolved.kind === 'task' && resolved.taskState === 'cancelled') {
+      const checkboxLine = resolved.kind === 'task' || resolved.kind === 'checklist';
+      if (checkboxLine && resolved.taskState === 'done') decorations.push(doneTaskLineDeco.range(line.from));
+      if (checkboxLine && resolved.taskState === 'cancelled') {
         decorations.push(cancelledTaskLineDeco.range(line.from));
         if (resolved.markerTo < line.to) decorations.push(cancelledTextMark.range(resolved.markerTo, line.to));
       }
-      if (resolved.kind === 'task' && resolved.taskState === 'scheduled') decorations.push(scheduledTaskLineDeco.range(line.from));
+      if (checkboxLine && resolved.taskState === 'scheduled') decorations.push(scheduledTaskLineDeco.range(line.from));
 
       // Indented list: detect leading whitespace from line text (tree may put tab inside ListMark so markerFrom can be line.from).
       const leadingMatch = text.match(/^(\s+)/);

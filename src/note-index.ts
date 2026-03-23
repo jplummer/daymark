@@ -9,6 +9,7 @@
  */
 
 import { readDir, readTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { isChecklistListLineText } from './live-preview';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
 
@@ -32,7 +33,7 @@ export interface BacklinkRef {
 
 export interface SearchResult {
   entry: NoteEntry;
-  lines: { lineNum: number; text: string; isDone: boolean }[];
+  lines: { lineNum: number; text: string; isDone: boolean; isChecklist: boolean }[];
 }
 
 // --- Parsing ---
@@ -494,9 +495,13 @@ export class NoteIndex {
         const lines: SearchResult['lines'] = [];
         text.split('\n').forEach((line, idx) => {
           if (re.test(line)) {
-            // + is a checklist item — treated as task for now, distinct behavior TBD
             const isDone = /^\s*[-+] \[x\] /.test(line) || /^\s*[-+] \[-\] /.test(line);
-            lines.push({ lineNum: idx + 1, text: line, isDone });
+            lines.push({
+              lineNum: idx + 1,
+              text: line,
+              isDone,
+              isChecklist: isChecklistListLineText(line),
+            });
           }
         });
         if (lines.length > 0) {

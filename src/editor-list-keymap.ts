@@ -12,6 +12,7 @@ import {
   getOrderedMarkerEnd,
   getNextOrderedMarkerInRun,
   ORDERED_LIST_REGEX,
+  taskBulletEnterContinuation,
 } from './live-preview';
 
 // When cursor is at end of a line that is only a start-of-line marker (task, bullet, ordered, checklist, or blockquote),
@@ -136,17 +137,10 @@ export function enterListAndBlockquoteAware(view: EditorView): boolean {
   if (trimmed.startsWith('> ')) {
     insert = '\n' + leading + '> ';
   } else {
-    const taskBulletMatch = text.match(/^(\s*)([-+] \[[x\->  ]\] |(\*) |([-+]) )/);
+    const listCont = taskBulletEnterContinuation(text);
     const orderedMatch = text.match(ORDERED_LIST_REGEX);
-    if (taskBulletMatch) {
-      const marker = taskBulletMatch[2];
-      if (marker === '* ') {
-        insert = '\n' + leading + '* ';
-      } else if (marker.startsWith('+ ')) {
-        insert = '\n' + leading + '+ [ ] ';
-      } else {
-        insert = '\n' + leading + '- [ ] ';
-      }
+    if (listCont !== null) {
+      insert = '\n' + leading + listCont;
     } else if (orderedMatch) {
       orderedContinuation = true;
       const nextInRun = getNextOrderedMarkerInRun(state, line.number);

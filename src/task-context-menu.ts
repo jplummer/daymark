@@ -15,6 +15,17 @@ const LABELS: Record<TaskMenuAction, string> = {
   reopen: 'Reopen task',
 };
 
+const CHECKLIST_LABELS: Record<TaskMenuAction, string> = {
+  complete: 'Complete item',
+  cancel: 'Cancel item',
+  schedule: 'Schedule item',
+  reopen: 'Reopen item',
+};
+
+function labelFor(resolved: ResolvedListLine, action: TaskMenuAction): string {
+  return resolved.kind === 'checklist' ? CHECKLIST_LABELS[action] : LABELS[action];
+}
+
 function actionsForState(state: TaskState | undefined): TaskMenuAction[] {
   const s = state ?? 'open';
   const out: TaskMenuAction[] = [];
@@ -89,11 +100,11 @@ function showTaskContextMenu(
     item.type = 'button';
     item.className = 'task-context-menu-item';
     item.setAttribute('role', 'menuitem');
-    item.textContent = LABELS[action];
+    item.textContent = labelFor(resolved, action);
     item.addEventListener('click', () => {
       removeOpenMenu();
       const fresh = resolveEditorListLine(view.state, lineNumber);
-      if (!fresh || fresh.kind !== 'task') return;
+      if (!fresh || (fresh.kind !== 'task' && fresh.kind !== 'checklist')) return;
       const spec = changeForAction(fresh, action);
       if (!spec) return;
       view.dispatch({ changes: spec });
@@ -146,7 +157,7 @@ export const taskContextMenuHandler = EditorView.domEventHandlers({
     }
     const line = view.state.doc.lineAt(pos);
     const resolved = resolveEditorListLine(view.state, line.number);
-    if (!resolved || resolved.kind !== 'task') {
+    if (!resolved || (resolved.kind !== 'task' && resolved.kind !== 'checklist')) {
       removeOpenMenu();
       return false;
     }
