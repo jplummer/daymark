@@ -318,28 +318,27 @@ function appendScheduleSection(menu: HTMLDivElement, view: EditorView, lineNumbe
     );
   });
 
-  const customWrap = document.createElement('div');
-  customWrap.className = 'task-context-menu-custom-date';
+  const chooseWrap = document.createElement('div');
+  chooseWrap.className = 'task-context-menu-choose-date';
 
-  const customBtn = document.createElement('button');
-  customBtn.type = 'button';
-  customBtn.className = 'task-context-menu-item task-context-menu-item--schedule-line task-context-menu-item--custom-date';
-  customBtn.setAttribute('aria-expanded', 'false');
-  const customLeft = document.createElement('span');
-  customLeft.className = 'task-context-menu-schedule-line-left';
-  const customLab = document.createElement('span');
-  customLab.className = 'task-context-menu-schedule-label';
-  customLab.textContent = 'Custom date';
-  customLeft.appendChild(customLab);
-  const chev = document.createElement('i');
-  chev.className = 'ri-arrow-down-s-line task-context-menu-custom-date-chevron';
-  chev.setAttribute('aria-hidden', 'true');
-  customBtn.appendChild(customLeft);
-  customBtn.appendChild(chev);
+  const chooseBtn = document.createElement('button');
+  chooseBtn.type = 'button';
+  chooseBtn.className =
+    'task-context-menu-item task-context-menu-item--schedule-line task-context-menu-item--choose-date';
+  const chooseLeft = document.createElement('span');
+  chooseLeft.className = 'task-context-menu-schedule-line-left';
+  const chooseLab = document.createElement('span');
+  chooseLab.className = 'task-context-menu-schedule-label';
+  chooseLab.textContent = 'Choose date';
+  chooseLeft.appendChild(chooseLab);
+  const calIcon = document.createElement('i');
+  calIcon.className = 'ri-calendar-line task-context-menu-choose-date-icon';
+  calIcon.setAttribute('aria-hidden', 'true');
+  chooseBtn.appendChild(chooseLeft);
+  chooseBtn.appendChild(calIcon);
 
   const calHost = document.createElement('div');
-  calHost.className = 'task-context-menu-custom-date-cal';
-  calHost.hidden = true;
+  calHost.className = 'task-context-menu-choose-date-cal';
 
   let calendarMounted = false;
   const ensureCalendar = () => {
@@ -348,24 +347,15 @@ function appendScheduleSection(menu: HTMLDivElement, view: EditorView, lineNumbe
     appendScheduleCalendar(calHost, view, lineNumber, true);
   };
 
-  customBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = customBtn.getAttribute('aria-expanded') === 'true';
-    if (open) {
-      customBtn.setAttribute('aria-expanded', 'false');
-      calHost.hidden = true;
-      customBtn.classList.remove('task-context-menu-item--custom-date-open');
-    } else {
-      ensureCalendar();
-      customBtn.setAttribute('aria-expanded', 'true');
-      calHost.hidden = false;
-      customBtn.classList.add('task-context-menu-item--custom-date-open');
-    }
-  });
+  const revealCalendar = () => {
+    ensureCalendar();
+  };
+  chooseWrap.addEventListener('mouseenter', revealCalendar);
+  chooseWrap.addEventListener('focusin', revealCalendar);
 
-  customWrap.appendChild(customBtn);
-  customWrap.appendChild(calHost);
-  menu.appendChild(customWrap);
+  chooseWrap.appendChild(chooseBtn);
+  chooseWrap.appendChild(calHost);
+  menu.appendChild(chooseWrap);
 }
 
 let openMenuEl: HTMLDivElement | null = null;
@@ -390,6 +380,32 @@ function clampMenuPosition(
     left: Math.min(Math.max(pad, x), Math.max(pad, maxLeft)),
     top: Math.min(Math.max(pad, y), Math.max(pad, maxTop)),
   };
+}
+
+/** Nudge a fixed menu so its full box stays inside the viewport (e.g. after calendar expands). */
+function clampMenuIntoViewport(menu: HTMLElement): void {
+  const pad = 8;
+  const rect = menu.getBoundingClientRect();
+  let left = parseFloat(menu.style.left);
+  let top = parseFloat(menu.style.top);
+  if (Number.isNaN(left)) left = rect.left;
+  if (Number.isNaN(top)) top = rect.top;
+
+  if (rect.right > window.innerWidth - pad) {
+    left += window.innerWidth - pad - rect.right;
+  }
+  if (rect.bottom > window.innerHeight - pad) {
+    top += window.innerHeight - pad - rect.bottom;
+  }
+  if (rect.left < pad) {
+    left += pad - rect.left;
+  }
+  if (rect.top < pad) {
+    top += pad - rect.top;
+  }
+
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
 }
 
 function showTaskContextMenu(
@@ -437,7 +453,13 @@ function showTaskContextMenu(
   const scroller = view.scrollDOM;
   const onScrollerScroll = () => dismiss();
 
+  const menuResizeObs = new ResizeObserver(() => {
+    requestAnimationFrame(() => clampMenuIntoViewport(menu));
+  });
+  menuResizeObs.observe(menu);
+
   const dismiss = () => {
+    menuResizeObs.disconnect();
     removeOpenMenu();
     document.removeEventListener('mousedown', onDocDown, true);
     document.removeEventListener('keydown', onKey, true);
