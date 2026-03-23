@@ -1,24 +1,24 @@
 /**
  * Right-click context menu on task list lines: complete, cancel, schedule, reopen.
- * Only offers actions that change the current task state.
+ * Scheduling uses NotePlan-style >today / >YYYY-MM-DD on the source and a daily copy with <back-ref.
  */
 
 import { EditorView } from '@codemirror/view';
 import { resolveEditorListLine, type ResolvedListLine, type TaskState } from './live-preview';
+import { formatISODate, type ScheduleTarget } from './task-schedule';
+import { runTaskSchedule } from './task-schedule-bridge';
 
-type TaskMenuAction = 'complete' | 'cancel' | 'schedule' | 'reopen';
+type TaskMenuAction = 'complete' | 'cancel' | 'reopen';
 
 const LABELS: Record<TaskMenuAction, string> = {
   complete: 'Complete task',
   cancel: 'Cancel task',
-  schedule: 'Schedule task',
   reopen: 'Reopen task',
 };
 
 const CHECKLIST_LABELS: Record<TaskMenuAction, string> = {
   complete: 'Complete item',
   cancel: 'Cancel item',
-  schedule: 'Schedule item',
   reopen: 'Reopen item',
 };
 
@@ -31,7 +31,6 @@ function actionsForState(state: TaskState | undefined): TaskMenuAction[] {
   const out: TaskMenuAction[] = [];
   if (s !== 'done') out.push('complete');
   if (s !== 'cancelled') out.push('cancel');
-  if (s !== 'scheduled') out.push('schedule');
   if (s !== 'open') out.push('reopen');
   return out;
 }
@@ -45,7 +44,6 @@ function changeForAction(
   const box: Record<TaskMenuAction, string> = {
     complete: '[x]',
     cancel: '[-]',
-    schedule: '[>]',
     reopen: '[ ]',
   };
   const next = box[action];
@@ -53,6 +51,81 @@ function changeForAction(
     return { from: taskBoxFrom, to: taskBoxTo, insert: `${next} ` };
   }
   return { from: taskBoxFrom, to: taskBoxTo, insert: next };
+}
+
+function addDaysLocal(d: Date, days: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
+
+async function applySchedule(
+  view: EditorView,
+  lineNumber: number,
+  target: ScheduleTarget,
+): Promise<void> {
+  const fresh = resolveEditorListLine(view.state, lineNumber);
+  if (!fresh || (fresh.kind !== 'task' && fresh.kind !== 'checklist')) return;
+  await runTaskSchedule(view, lineNumber, fresh, target);
+}
+
+function appendScheduleSection(
+  menu: HTMLDivElement,
+  view: EditorView,
+  lineNumber: number,
+  resolved: ResolvedListLine,
+) {
+  const divider = document.createElement('div');
+  divider.className = 'task-context-menu-divider';
+  menu.appendChild(divider);
+
+  const heading = document.createElement('div');
+  heading.className = 'task-context-menu-heading';
+  heading.textContent = resolved.kind === 'checklist' ? 'Schedule item' : 'Schedule task';
+  menu.appendChild(heading);
+
+  const todayBtn = document.createElement('button');
+  todayBtn.type = 'button';
+  todayBtn.className = 'task-context-menu-item';
+  todayBtn.textContent = 'Today (>today)';
+  todayBtn.addEventListener('click', () => {
+    removeOpenMenu();
+    void applySchedule(view, lineNumber, { kind: 'today' }).finally(() => view.focus());
+  });
+  menu.appendChild(todayBtn);
+
+  const tom = addDaysLocal(new Date(), 1);
+  const tomorrowBtn = document.createElement('button');
+  tomorrowBtn.type = 'button';
+  tomorrowBtn.className = 'task-context-menu-item';
+  tomorrowBtn.textContent = `Tomorrow (${formatISODate(tom)})`;
+  tomorrowBtn.addEventListener('click', () => {
+    removeOpenMenu();
+    void applySchedule(view, lineNumber, { kind: 'date', date: tom }).finally(() => view.focus());
+  });
+  menu.appendChild(tomorrowBtn);
+
+  const row = document.createElement('div');
+  row.className = 'task-context-menu-date-row';
+  const inp = document.createElement('input');
+  inp.type = 'date';
+  inp.className = 'task-context-menu-date-input';
+  inp.value = formatISODate(new Date());
+  const apply = document.createElement('button');
+  apply.type = 'button';
+  apply.className = 'task-context-menu-item task-context-menu-date-apply';
+  apply.textContent = 'Schedule to date';
+  apply.addEventListener('click', () => {
+    if (!inp.value) return;
+    removeOpenMenu();
+    const parts = inp.value.split('-').map(Number);
+    if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
+    const dt = new Date(parts[0], parts[1] - 1, parts[2]);
+    void applySchedule(view, lineNumber, { kind: 'date', date: dt }).finally(() => view.focus());
+  });
+  row.appendChild(inp);
+  row.appendChild(apply);
+  menu.appendChild(row);
 }
 
 let openMenuEl: HTMLDivElement | null = null;
@@ -88,13 +161,11 @@ function showTaskContextMenu(
 ) {
   removeOpenMenu();
 
-  const actions = actionsForState(resolved.taskState);
-  if (actions.length === 0) return;
-
   const menu = document.createElement('div');
   menu.className = 'task-context-menu';
   menu.setAttribute('role', 'menu');
 
+  const actions = actionsForState(resolved.taskState);
   for (const action of actions) {
     const item = document.createElement('button');
     item.type = 'button';
@@ -112,6 +183,8 @@ function showTaskContextMenu(
     });
     menu.appendChild(item);
   }
+
+  appendScheduleSection(menu, view, lineNumber, resolved);
 
   document.body.appendChild(menu);
   openMenuEl = menu;

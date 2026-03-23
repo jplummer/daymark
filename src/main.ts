@@ -20,6 +20,13 @@ import {
   orderedListBodyInsertFilter,
 } from './live-preview';
 import { taskContextMenuHandler } from './task-context-menu';
+import { registerTaskScheduleExecutor } from './task-schedule-bridge';
+import {
+  buildDestinationLine,
+  buildScheduledSourceLine,
+  cleanedTaskBody,
+  formatISODate,
+} from './task-schedule';
 import { listLineKeymapExtensions } from './editor-list-keymap';
 import {
   initSidebar,
@@ -1118,6 +1125,56 @@ function wireResizeHandle() {
 
 // --- Init ---
 
+function wireTaskScheduleExecutor() {
+  registerTaskScheduleExecutor(async (v, lineNumber, resolved, target) => {
+    const line = v.state.doc.line(lineNumber);
+    const body = cleanedTaskBody(line.text, line.from, resolved);
+    const sourceLine = buildScheduledSourceLine(line.text, line.from, resolved, target);
+
+    v.dispatch({ changes: { from: line.from, to: line.to, insert: sourceLine } });
+    scheduleSave();
+    v.focus();
+
+    if (target.kind === 'today') {
+      setStatus('Scheduled with >today');
+      return;
+    }
+
+    const backRef =
+      currentNote?.type === 'daily' && currentNote.date
+        ? formatISODate(currentNote.date)
+        : formatISODate(new Date());
+    const destLine = buildDestinationLine(body, backRef);
+    const relPath = `${NOTEPLAN_BASE}/Calendar/${formatDateForFile(target.date)}`;
+
+    if (currentNote?.relPath === relPath && view === v) {
+      const doc = v.state.doc;
+      const endsWithNewline = doc.length > 0 && v.state.doc.sliceString(doc.length - 1) === '\n';
+      const insert = doc.length === 0 ? `${destLine}\n` : endsWithNewline ? `${destLine}\n` : `\n${destLine}\n`;
+      v.dispatch({ changes: { from: doc.length, to: doc.length, insert } });
+      scheduleSave();
+      setStatus(`Scheduled to ${formatDateForDisplay(target.date)}`);
+      return;
+    }
+
+    try {
+      let content = '';
+      try {
+        content = await readTextFile(relPath, { baseDir: BaseDirectory.Home });
+      } catch {
+        content = '';
+      }
+      const tail = content.replace(/\s+$/, '');
+      const next = tail === '' ? `${destLine}\n` : `${tail}\n${destLine}\n`;
+      await writeTextFile(relPath, next, { baseDir: BaseDirectory.Home });
+      setStatus(`Scheduled to ${formatDateForDisplay(target.date)}`);
+    } catch (e) {
+      console.error('[daymark] Schedule write failed:', e);
+      setStatus(`Schedule failed: ${e}`);
+    }
+  });
+}
+
 function wireNavButtons() {
   document.getElementById('nav-prev')?.addEventListener('click', navigatePrev);
   document.getElementById('nav-next')?.addEventListener('click', navigateNext);
@@ -1157,6 +1214,7 @@ function wireBacklinksPanel() {
 }
 
 async function init() {
+  wireTaskScheduleExecutor();
   wireNavButtons();
   wireFormattingToolbar();
   wireResizeHandle();
