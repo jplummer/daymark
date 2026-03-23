@@ -117,13 +117,15 @@ Discussed and decided 2026-02-25.
 
 **Problem:** NotePlan has three separate context menus (scheduling arrow, right-click on lines, synced-line menu on drag handle). Fragmented and hard to discover.
 
-**Solution:** One right-click context menu on any line. Task-specific actions appear conditionally. Sections separated by dividers. Right-click a task line: Schedule (submenu), Complete/Open/Cancel (state-dependent), Copy Synced Line, Format (submenu), Cut/Copy/Paste/Paste as Plain Text. Right-click a non-task line: Copy Synced Line, Format, Cut/Copy/Paste/Paste as Plain Text.
+**Solution:** One right-click context menu on any line. Task-specific actions appear conditionally. Sections separated by dividers. Right-click a task or checklist line: Schedule (submenu), Complete/Open/Cancel (state-dependent), Copy Synced Line, Format (submenu), Cut/Copy/Paste/Paste as Plain Text. Right-click a non-task line: Copy Synced Line, Format, Cut/Copy/Paste/Paste as Plain Text.
 
-**Task action rules:** Open task → Schedule, Complete, Cancel. Done task → Open, Cancel. Cancelled → Schedule, Complete, Open. Scheduled → Schedule (reschedule), Complete, Cancel.
+**Task action rules:** Open task → Schedule, Complete, Cancel. Done task → Open, Cancel. Cancelled → Schedule, Complete, Open. Scheduled → Schedule (reschedule), Complete, Cancel. (Same state rules for checklist lines.)
 
-**Schedule submenu:** `>today`, tomorrow's date, relative shortcuts (+1d, +3d, +1w, +1m), this week, next week, calendar picker.
+**Schedule submenu (as implemented, 2026-03):** Task actions appear first, then a **SCHEDULE** heading. Primary rows label the **exact markdown token** side by side with the human label (wide flyout so rows do not wrap): **Today** `>today`, **Tomorrow** `>YYYY-MM-DD`, **This week** / **Next week** as **`>YYYY-Www`** (weekly calendar note, not a single day). **Custom date** opens a nested compact month grid (week numbers shown) to pick a day. Early design also mentioned relative shortcuts (+1d, +3d, …); those are not in the current menu.
 
-**Left-click task icon:** Toggles between done and open. Separate from context menu; most frequent interaction, one click.
+**Left-click task or checklist icon:** Toggles open/done where the line uses `[ ]` / `[x]`. Separate from the context menu; most frequent interaction, one click. **Right-click and Ctrl/Cmd-click** on the icon must open the context menu only (no toggle)—see Learnings.
+
+**CM6 note:** Task/checklist markers are replace widgets. The editor must still receive `contextmenu` events on the widget so the line menu runs when right-clicking the icon; see Learnings.
 
 ---
 
@@ -136,6 +138,7 @@ Things we made work after hitting issues. "We tried X, it broke because Y; fix w
 - **Native file watching** — Tauri v2's `watch()` from `@tauri-apps/plugin-fs` didn't fire events for files in the NotePlan Setapp container. No errors thrown, just no events. Root cause unknown (sandbox restrictions, path resolution, or plugin bug). We use polling (readTextFile every 2s for current note, readDir every 5s for directory) as a reliable fallback. See Open questions in PLAN for phases that might revisit this.
 - **Re-read on foreground** — When the app is backgrounded, macOS App Nap throttles (or pauses) `setInterval` timers. When the user switches back to Daymark, the 2s poll may not fire immediately, so they can see stale content for a few seconds. Add a `visibilitychange` or window `focus` handler that triggers an immediate re-read of the current note when the app becomes visible again.
 - **Tree vs regex fallback in live preview** — When the CM6 syntax tree is stale (e.g. right after indent), `syntaxTree(state)` doesn't yet reflect the edit and decorations can disappear. We run a regex-based fallback when `tree.length < doc.length` (or equivalent) so decorations stay visible. Tradeoff: brief flicker possible when switching between tree and regex; acceptable for now. Reduce or eliminate regex fallback in Phase 3b if we fix tree staleness.
+- **Task/checklist icon widget: context menu + toggle** — By default CM6 `WidgetType` ignores pointer events on the DOM node (`ignoreEvent` → true), so `mousedown` on the task icon can toggle via a listener on the widget. But **`contextmenu` was ignored too**, so CodeMirror did not treat the event as belonging to the editor, **`domEventHandlers.contextmenu` never ran**, and right-click on the icon failed. **Fix:** In `MarkerWidget.ignoreEvent`, return **`false` for `contextmenu`** on task/checklist widgets so the editor handles the event. On icon `mousedown`, only toggle for **primary button** (`button === 0`) **without** `ctrlKey` / `metaKey` so macOS Ctrl-click does not flip state; **`taskMarkerClickHandler`** uses the same rules (`live-preview.ts`).
 
 ---
 
@@ -159,6 +162,7 @@ Observed during Phase 1 (Setapp version).
 - **#hashtags:** Rarely used. Support for compatibility; careful tokenization (collision with hex colors, Slack channels, headings, URL fragments).
 - **Priority markers:** `!`, `!!`, `!!!` before task text. NotePlan renders with increasing visual weight.
 - **Task states observed:** `- text` = open (no brackets on disk); `- [x]` = done; `- [-]` = cancelled; `- [>] ... >YYYY-MM-DD` = scheduled. Brackets only for non-open states.
+- **Checklist items (`+`):** Lines starting with `+` and checkbox markup (`+ [ ]`, `+ [x]`, `+ [>]`, etc.) get the same live-preview icons and **task context menu** (complete, cancel, schedule, reopen) as `-` tasks. They are **excluded from task-style review aggregates**—surfaces that count or list incomplete work only treat `-` lines, not checklists (`isChecklistListLineText` in `live-preview.ts`).
 
 ### Scheduling syntax (on-disk format)
 
@@ -169,6 +173,8 @@ Observed during Phase 1 (Setapp version).
 - **Tab indentation:** Structural; creates subtasks, nested bullets, block hierarchy.
 - **`>today` on disk:** Persists literally as `>today` — NOT resolved to a date. Only `>today` tasks roll forward; `>YYYY-MM-DD` tasks are pinned.
 - **`>today` carry-forward scope:** Only explicitly `>today`-tagged tasks carry forward. Past-due `>YYYY-MM-DD` tasks do NOT auto-carry; surfaced as stale via calendar.
+- **Weekly schedule tag:** `>YYYY-Www` (e.g. `>2026-W12`) targets the weekly calendar note `Calendar/YYYY-Www.txt`, same as NotePlan. The schedule UI’s “this week” / “next week” actions write this token, not a day-level `>YYYY-MM-DD`.
+- **Schedule calendar grid — first day of week:** Implemented as `CALENDAR_WEEK_STARTS_ON` in `task-schedule.ts` (default **Sunday**). Not user-configurable yet; when Settings exists, expose it (see PLAN.md Someday).
 
 ### Synced lines
 
