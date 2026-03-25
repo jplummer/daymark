@@ -2,9 +2,10 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "note-*"],
   "permissions": [
     "core:default",
+    "core:webview:allow-create-webview-window",
     "opener:default",
     "fs:default",
     {
@@ -18,6 +19,9 @@
     "fs:allow-write-text-file",
     "fs:allow-read-dir",
     "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-rename",
+    "fs:allow-copy-file",
     "fs:allow-watch",
     "fs:allow-unwatch",
     "http:default",

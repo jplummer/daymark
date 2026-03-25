@@ -359,8 +359,18 @@ function appendScheduleSection(menu: HTMLDivElement, view: EditorView, lineNumbe
 }
 
 let openMenuEl: HTMLDivElement | null = null;
+let openMenuResizeObserver: ResizeObserver | null = null;
+
+/** Close task line context menu if open (e.g. before opening another in-app menu). */
+export function dismissTaskContextMenu(): void {
+  removeOpenMenu();
+}
 
 function removeOpenMenu() {
+  if (openMenuResizeObserver) {
+    openMenuResizeObserver.disconnect();
+    openMenuResizeObserver = null;
+  }
   if (openMenuEl) {
     openMenuEl.remove();
     openMenuEl = null;
@@ -386,24 +396,17 @@ function clampMenuPosition(
 function clampMenuIntoViewport(menu: HTMLElement): void {
   const pad = 8;
   const rect = menu.getBoundingClientRect();
-  let left = parseFloat(menu.style.left);
-  let top = parseFloat(menu.style.top);
-  if (Number.isNaN(left)) left = rect.left;
-  if (Number.isNaN(top)) top = rect.top;
-
-  if (rect.right > window.innerWidth - pad) {
-    left += window.innerWidth - pad - rect.right;
-  }
-  if (rect.bottom > window.innerHeight - pad) {
-    top += window.innerHeight - pad - rect.bottom;
-  }
-  if (rect.left < pad) {
-    left += pad - rect.left;
-  }
-  if (rect.top < pad) {
-    top += pad - rect.top;
-  }
-
+  const w = rect.width;
+  const h = rect.height;
+  // One snapshot of geometry; clamp x/y like clampMenuPosition (avoids mixing stale rect edges after deltas).
+  const left = Math.min(
+    Math.max(pad, rect.left),
+    Math.max(pad, window.innerWidth - w - pad),
+  );
+  const top = Math.min(
+    Math.max(pad, rect.top),
+    Math.max(pad, window.innerHeight - h - pad),
+  );
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
 }
@@ -457,9 +460,9 @@ function showTaskContextMenu(
     requestAnimationFrame(() => clampMenuIntoViewport(menu));
   });
   menuResizeObs.observe(menu);
+  openMenuResizeObserver = menuResizeObs;
 
   const dismiss = () => {
-    menuResizeObs.disconnect();
     removeOpenMenu();
     document.removeEventListener('mousedown', onDocDown, true);
     document.removeEventListener('keydown', onKey, true);

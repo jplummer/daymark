@@ -234,6 +234,7 @@ export class NoteIndex {
 
   /**
    * Find all notes that contain a [[link]] pointing to the given note.
+   * Trashed notes are omitted. Active notes are listed before archived (title order within each group).
    */
   getBacklinks(relPath: string): NoteEntry[] {
     const entry = this._byRelPath.get(relPath);
@@ -253,7 +254,12 @@ export class NoteIndex {
 
     return [...linkingPaths]
       .map((p) => this._byRelPath.get(p)!)
-      .filter(Boolean);
+      .filter(Boolean)
+      .filter((e) => !e.isTrashed)
+      .sort((a, b) => {
+        if (a.isArchived !== b.isArchived) return a.isArchived ? 1 : -1;
+        return a.title.localeCompare(b.title);
+      });
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   backspaceMarkerLineAware,
   enterListAndBlockquoteAware,
   listLineKeymapExtensions,
+  markdownTab,
   shiftTabOnHeadingOrListLine,
   tabOnHeadingOrListLine,
 } from './editor-list-keymap';
@@ -270,5 +271,40 @@ describe('tabOnHeadingOrListLine / shiftTabOnHeadingOrListLine', () => {
     const view = new EditorView({ state, parent });
     lastView = view;
     expect(tabOnHeadingOrListLine(view)).toBe(false);
+  });
+
+  it('nests at line start when caret is inside leading tabs (Tab anywhere = line indent)', () => {
+    const doc = '\t\t- [ ] x';
+    const view = mkView(doc, 1);
+    expect(tabOnHeadingOrListLine(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe('\t\t\t- [ ] x');
+    expect(view.state.selection.main.head).toBe(2);
+  });
+
+  it('nests at line start when caret is in task body', () => {
+    const doc = '- [ ] hello';
+    const view = mkView(doc, 8);
+    expect(tabOnHeadingOrListLine(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe('\t- [ ] hello');
+    expect(view.state.selection.main.head).toBe(9);
+  });
+
+  it('markdownTab indents every line when selection spans plaintext block', () => {
+    const doc = 'aa\nbb\ncc';
+    const state = EditorState.create({
+      doc,
+      selection: { anchor: 0, head: doc.length },
+      extensions: [
+        orderedListBodyInsertFilter,
+        indentUnit.of('\t'),
+        ...listLineKeymapExtensions(),
+      ],
+    });
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const view = new EditorView({ state, parent });
+    lastView = view;
+    expect(markdownTab(view)).toBe(true);
+    expect(view.state.doc.toString()).toBe('\taa\n\tbb\n\tcc');
   });
 });

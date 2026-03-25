@@ -5,6 +5,7 @@
 
 import { Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
+import { indentMore, indentLess } from '@codemirror/commands';
 import { indentUnit } from '@codemirror/language';
 import {
   isListLine,
@@ -43,7 +44,10 @@ export function backspaceMarkerLineAware(view: EditorView): boolean {
   return true;
 }
 
-/** Tab on a heading or list line inserts indent at line start (so it works when markers are hidden or replaced). */
+/**
+ * Tab on a heading or list line: one indent unit at line start (NotePlan-style — Tab anywhere on the line
+ * nests the line, caret follows in the body when it was past the indent).
+ */
 export function tabOnHeadingOrListLine(view: EditorView): boolean {
   const { state } = view;
   if (!state.selection.main.empty) return false;
@@ -55,9 +59,11 @@ export function tabOnHeadingOrListLine(view: EditorView): boolean {
   if (!isHeading && !isList) return false;
   const unit = state.facet(indentUnit);
   const isOrdered = ORDERED_LIST_REGEX.test(line.text);
+  const newHead =
+    head > line.from ? head + unit.length : line.from + unit.length;
   view.dispatch({
     changes: { from: line.from, to: line.from, insert: unit },
-    selection: { anchor: line.from + unit.length },
+    selection: { anchor: newHead },
     userEvent: 'input.indent',
   });
   if (isOrdered) {
@@ -161,15 +167,28 @@ export function enterListAndBlockquoteAware(view: EditorView): boolean {
   return true;
 }
 
-/** Tab / Shift-Tab / Enter / Backspace keymaps for list and heading lines (use with Prec.high / Prec.highest). */
+function selectionHasNonEmptyRange(view: EditorView): boolean {
+  return view.state.selection.ranges.some((r) => !r.empty);
+}
+
+/**
+ * Tab: indent every line touched by the selection when any range is non-empty; otherwise list/heading
+ * rules, then one line indent. Register with [`Prec.highest`](https://codemirror.net/docs/ref/#state.Prec.highest)
+ * so other extensions (e.g. completion) do not eat Tab first.
+ */
+export function markdownTab(view: EditorView): boolean {
+  if (selectionHasNonEmptyRange(view)) return indentMore(view);
+  return tabOnHeadingOrListLine(view) || indentMore(view);
+}
+
+export function markdownShiftTab(view: EditorView): boolean {
+  if (selectionHasNonEmptyRange(view)) return indentLess(view);
+  return shiftTabOnHeadingOrListLine(view) || indentLess(view);
+}
+
+/** Enter / Backspace for lists and blockquotes (Prec.highest). Tab / Shift-Tab: add in `main` via Prec.highest. */
 export function listLineKeymapExtensions() {
   return [
-    Prec.high(
-      keymap.of([
-        { key: 'Tab', run: tabOnHeadingOrListLine },
-        { key: 'Shift-Tab', run: shiftTabOnHeadingOrListLine },
-      ]),
-    ),
     Prec.highest(
       keymap.of([
         { key: 'Enter', run: enterListAndBlockquoteAware },

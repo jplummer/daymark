@@ -1,6 +1,6 @@
 import { EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap, highlightActiveLine, KeyBinding } from '@codemirror/view';
-import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
+import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import {
@@ -13,9 +13,11 @@ import {
 import { readTextFile, writeTextFile, readDir, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { autocompletion } from '@codemirror/autocomplete';
 import {
   livePreview,
+  topmatterHideField,
   taskMarkerClickHandler,
   orderedListBodyInsertFilter,
 } from './live-preview';
@@ -28,7 +30,11 @@ import {
   formatISODate,
   formatWeeklyCalendarFilename,
 } from './task-schedule';
-import { listLineKeymapExtensions } from './editor-list-keymap';
+import {
+  listLineKeymapExtensions,
+  markdownShiftTab,
+  markdownTab,
+} from './editor-list-keymap';
 import {
   initSidebar,
   setActiveTreeItem,
@@ -42,6 +48,7 @@ import {
   TreeNode,
 } from './sidebar';
 import { noteIndex, SearchResult } from './note-index';
+import type { SidebarFsMutation } from './sidebar-fs';
 import { wikiLinkCompletion, mentionCompletion, hashtagCompletion } from './completions';
 import 'remixicon/fonts/remixicon.css';
 
@@ -822,7 +829,7 @@ const editorExtensions = [
   indentUnit.of('\t'),
   bracketMatching(),
   history(),
-  keymap.of([...navKeymap, indentWithTab, ...defaultKeymap, ...historyKeymap]),
+  keymap.of([...navKeymap, ...defaultKeymap, ...historyKeymap]),
   ...listLineKeymapExtensions(),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
@@ -837,10 +844,17 @@ const editorExtensions = [
     override: [wikiLinkCompletion, mentionCompletion, hashtagCompletion],
     activateOnTyping: true,
   }),
-  ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview, Prec.high(taskMarkerClickHandler)]),
+  ...(DISABLE_LIVE_PREVIEW ? [] : [livePreview, topmatterHideField, Prec.high(taskMarkerClickHandler)]),
   Prec.high(taskContextMenuHandler),
   linkClickHandler,
   pasteUrlHandler,
+  // Tab last and highest precedence so block indent / list Tab are not shadowed by other keymaps.
+  Prec.highest(
+    keymap.of([
+      { key: 'Tab', run: markdownTab },
+      { key: 'Shift-Tab', run: markdownShiftTab },
+    ]),
+  ),
 ];
 
 // --- Polling for external changes ---
@@ -993,13 +1007,17 @@ function updateBacklinksPanel(relPath: string) {
     panel.classList.remove('no-backlinks');
     for (const entry of backlinks) {
       const item = document.createElement('div');
-      item.className = 'backlink-item';
+      item.className = `backlink-item${entry.isArchived ? ' backlink-item--archived' : ''}`;
 
       const icon = document.createElement('i');
-      icon.className = 'ri-link';
+      icon.className = entry.isArchived ? 'ri-archive-line' : 'ri-file-text-line';
 
       const label = document.createElement('span');
-      label.textContent = entry.title;
+      if (entry.isArchived) {
+        label.innerHTML = `${escapeHtml(entry.title)} <span class="search-archived-badge">archived</span>`;
+      } else {
+        label.textContent = entry.title;
+      }
 
       item.appendChild(icon);
       item.appendChild(label);
@@ -1046,6 +1064,36 @@ function projectNote(node: TreeNode): NoteLocation {
     relPath: node.relPath,
     displayName: node.title,
   };
+}
+
+async function openNoteInNewWindow(relPath: string): Promise<void> {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.searchParams.set('openNote', relPath);
+  const label = `note-${Date.now()}`;
+  new WebviewWindow(label, {
+    url: url.toString(),
+    title: 'Daymark',
+    width: 1200,
+    height: 800,
+  });
+}
+
+async function handleSidebarFsMutation(m: SidebarFsMutation): Promise<void> {
+  await noteIndex.build();
+  await refreshSidebar();
+  refreshMentionsSidebar();
+  refreshHashtagsSidebar();
+  if (
+    m.kind === 'note-path-changed'
+    && currentNote?.type === 'project'
+    && currentNote.relPath === m.from
+  ) {
+    const ent = noteIndex.getEntry(m.to);
+    const base = m.to.split('/').pop()?.replace(/\.txt$/, '') ?? 'Note';
+    const displayName = ent?.title ?? base;
+    await navigateTo({ type: 'project', relPath: m.to, displayName }, false);
+  }
 }
 
 // Navigate to previous or next period depending on note type
@@ -1226,6 +1274,9 @@ async function init() {
   wireResizeHandle();
   wireBacklinksPanel();
 
+  const params = new URLSearchParams(window.location.search);
+  const openNoteRel = params.get('openNote');
+
   const sidebarReady = initSidebar({
     onOpenNote: (node: TreeNode) => {
       navigateTo(projectNote(node));
@@ -1233,16 +1284,38 @@ async function init() {
     onOpenFolder: (node: TreeNode) => {
       showFolderIndex(node.relPath, node.title);
     },
+    contextBridge: {
+      prepareFileMutation: flushSave,
+      openNoteInNewWindow,
+      onError: (msg) => {
+        setStatus(msg);
+        console.error('[daymark] Sidebar context:', msg);
+      },
+      afterFilesystemChange: handleSidebarFsMutation,
+    },
   });
 
-  // Build note index in parallel with first navigation
   const indexReady = noteIndex.build();
 
-  await navigateTo(dailyNote(new Date()));
-  await sidebarReady;
-  await indexReady;
+  if (openNoteRel) {
+    await Promise.all([sidebarReady, indexReady]);
+    window.history.replaceState({}, '', `${window.location.pathname}${window.location.hash}`);
+    const entry = noteIndex.getEntry(openNoteRel);
+    const base = openNoteRel.split('/').pop()?.replace(/\.txt$/, '') ?? 'Note';
+    await navigateTo(
+      {
+        type: 'project',
+        relPath: openNoteRel,
+        displayName: entry?.title ?? base,
+      },
+      true,
+    );
+  } else {
+    await navigateTo(dailyNote(new Date()));
+    await sidebarReady;
+    await indexReady;
+  }
 
-  // Re-render backlinks now that index is ready (initial navigateTo ran before index finished)
   if (currentNote) updateBacklinksPanel(currentNote.relPath);
 
   // Build mentions sidebar now that index is ready

@@ -34,10 +34,13 @@
   /* List bullets — matches NotePlan todo / warm marker tone */
   --bullet: #ED3F1C;
   /* Body size; live-preview headings/markers use em off this — was 14px, then −10% */
-  --editor-font-size: calc(14px * 0.9);
+  --editor-font-size: 13px;
+  /* Cap line length at N “em squares” of the body size (50 × base → 600px at 12px). */
+  --editor-line-measure-chars: 50;
+  --editor-max-content-width: calc(var(--editor-line-measure-chars) * var(--editor-font-size));
   --editor-line-height: 1.5;
   --editor-line-gap: 0.35em;
-  /* Live preview layout: n = marker width; content start = line-left + n; indent levels = multiples of n; zero-level list/blockquote and first-level indent wrap to same place. */
+  /* Live preview layout: list/blockquote body aligns to line-left + marker-width; leading file indent is visible tabs/spaces. */
   --live-preview-line-left: 6px;
   --live-preview-marker-width: 3ch;
   --live-preview-indent-step: var(--live-preview-marker-width);
@@ -432,7 +435,10 @@ html, body {
 }
 
 .cm-editor .cm-content {
-  max-width: 720px;
+  max-width: var(--editor-max-content-width);
+  /* Fill flex row so wrap width matches the visible column (avoids shrink-to-text quirks). */
+  width: 100%;
+  box-sizing: border-box;
   caret-color: var(--cursor);
 }
 
@@ -461,6 +467,9 @@ html, body {
 
 /* ── Line spacing — per logical line; line-height handles intra-paragraph air ── */
 .cm-editor .cm-line {
+  /* BFC: wrapped rows stay aligned when the line mixes padding, inline-block markers, and body text. */
+  display: flow-root;
+  tab-size: 4;
   padding-bottom: var(--editor-line-gap);
 }
 
@@ -533,9 +542,9 @@ html, body {
   color: var(--syntax-fade) !important;
 }
 
-/* Invisible copy of leading indent — keeps wrap width for coords / vertical motion */
+/* Low-contrast copy of leading indent — doc keeps real tabs/spaces; this keeps soft-wrap rows aligned */
 .cm-live-preview-hidden-text {
-  opacity: 0;
+  opacity: 0.22;
   font: inherit;
   white-space: pre;
   pointer-events: none;
@@ -817,6 +826,10 @@ html, body {
   color: var(--text-muted);
   font-size: 14px;
   flex-shrink: 0;
+}
+
+.backlink-item--archived {
+  color: var(--text-secondary);
 }
 
 .backlink-empty {

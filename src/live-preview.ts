@@ -4,12 +4,13 @@
  * Hides markdown syntax characters (e.g. **, ##, [[, ]]) via replace
  * decorations. Hidden delimiters use a zero-width widget so they do not
  * occupy horizontal space when not shown (faded) on the cursor line.
- * Leading indent before headings/lists/blockquotes still uses an invisible
- * copy of the real characters so wrapped lines and vertical motion stay stable.
+ * Leading tabs/spaces remain real document characters; for layout, a low-contrast inline
+ * copy replaces them so wrapped rows align (plain tabs only indent the first visual row).
  *
  * Currently handles: headings, blockquotes, bold, italic, wiki-links,
  * inline code, strikethrough, task checkboxes (`- [ ]`), checklist items
- * (`+ [ ]`, square icons), and external links.
+ * (`+ [ ]`, square icons), external links, and NotePlan-style YAML topmatter
+ * (`---` … `---`) collapsed when the selection does not touch that region.
  *
  * Styling is hard-coded for now. The decoration styles live in
  * styles.css under .cm-live-preview-* classes, and can be made
@@ -24,14 +25,21 @@ import {
   ViewUpdate,
   WidgetType,
 } from '@codemirror/view';
-import { EditorSelection, EditorState, Range, Transaction } from '@codemirror/state';
+import {
+  EditorSelection,
+  EditorState,
+  Range,
+  StateField,
+  Text,
+  Transaction,
+} from '@codemirror/state';
 import { indentUnit, syntaxTree } from '@codemirror/language';
 
 // --- Widgets for replacing syntax tokens ---
 
 /**
- * Invisible copy of source text — for leading indent only. Zero-width
- * replacements broke vertical cursor motion on indented / wrapped lines.
+ * Low-contrast copy of leading indent — real bytes stay in the doc; this keeps block padding +
+ * marker alignment consistent when a logical line soft-wraps (tabs at line start only affect row 1).
  */
 class HiddenWidget extends WidgetType {
   constructor(readonly text: string) {
@@ -73,6 +81,37 @@ function collapsedHiddenRange(from: number, to: number) {
   return Decoration.replace({
     widget: new CollapsedHiddenWidget(),
   }).range(from, to);
+}
+
+/** Do not scan forever if the opening `---` never closes. */
+const TOPMATTER_MAX_LINES = 500;
+
+const TOPMATTER_FENCE_LINE = /^\s*---\s*$/;
+
+/**
+ * If the document starts with YAML-style front matter (first line `---`, later a closing `---` on its own line),
+ * returns the half-open range `[from, to)` covering through the line break after the closing fence (body starts at `to`).
+ * BOM on line 1 is included. Returns null when there is no well-formed block.
+ */
+export function topmatterSliceRange(doc: Text): { from: number; to: number } | null {
+  if (doc.lines < 2) return null;
+  const first = doc.line(1);
+  const line1Text = first.text.replace(/^\uFEFF/, '');
+  if (!TOPMATTER_FENCE_LINE.test(line1Text)) return null;
+
+  const scanEnd = Math.min(doc.lines, TOPMATTER_MAX_LINES);
+  for (let n = 2; n <= scanEnd; n++) {
+    if (!TOPMATTER_FENCE_LINE.test(doc.line(n).text)) continue;
+    const closeLine = doc.line(n);
+    let to = closeLine.to;
+    if (to < doc.length) to += 1;
+    return { from: 0, to };
+  }
+  return null;
+}
+
+function selectionIntersectsRange(state: EditorState, from: number, to: number): boolean {
+  return state.selection.ranges.some((r) => r.from < to && r.to > from);
 }
 
 // Remix Icon class names for task states (match sidebar / index.html usage)
@@ -205,6 +244,17 @@ for (let level = 1; level <= 6; level++) {
   headingLineDecos[level] = Decoration.line({ class: `cm-live-preview-h${level}` });
 }
 
+const indentLineDecos: Record<number, Decoration> = {};
+for (let n = 1; n <= 3; n++) {
+  indentLineDecos[n] = Decoration.line({ class: `cm-live-preview-indent-${n}` });
+}
+
+function leadingWhitespaceIndentLevel(leading: string): number {
+  const tabCount = (leading.match(/\t/g) ?? []).length;
+  const spaceCount = (leading.match(/ /g) ?? []).length;
+  return Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+}
+
 const blockquoteLineDeco = Decoration.line({ class: 'cm-live-preview-blockquote' });
 /** Set to true to log every blockquote application (path, line number, line text) to console. */
 const DEBUG_BLOCKQUOTE = false;
@@ -215,11 +265,6 @@ const doneTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-done-lin
 const cancelledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-cancelled-line' });
 const cancelledTextMark = Decoration.mark({ class: 'cm-live-preview-task-cancelled-text' });
 const scheduledTaskLineDeco = Decoration.line({ class: 'cm-live-preview-task-scheduled-line' });
-
-const indentLineDecos: Record<number, Decoration> = {};
-for (let n = 1; n <= 3; n++) {
-  indentLineDecos[n] = Decoration.line({ class: `cm-live-preview-indent-${n}` });
-}
 
 // --- Build decorations from syntax tree (when available) ---
 
@@ -279,9 +324,7 @@ function buildDecorationsFromTree(
         if (line.from < from) {
           const leadingLen = from - line.from;
           const leadingPart = doc.sliceString(line.from, from);
-          const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-          const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-          const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+          const indentLevel = leadingWhitespaceIndentLevel(leadingPart);
           decorations.push(indentLineDecos[indentLevel].range(line.from));
           decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
         }
@@ -316,7 +359,7 @@ function buildDecorationsFromTree(
         return;
       }
 
-      // Blockquote: style lines that have ">" (optional leading whitespace); indent + hidden for leading tabs/spaces.
+      // Blockquote: style lines that have ">" (optional leading whitespace).
       if (name === 'Blockquote') {
         let pos = from;
         while (pos < to) {
@@ -338,14 +381,6 @@ function buildDecorationsFromTree(
             if (DEBUG_BLOCKQUOTE) console.log('[live-preview] blockquote (tree) line', line.number, ':', JSON.stringify(lineText));
             decorations.push(blockquoteLineDeco.range(line.from));
             const leadingLen = qMatch[1].length;
-            if (leadingLen > 0) {
-              const leadingPart = qMatch[1];
-              const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-              const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-              const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
-              decorations.push(indentLineDecos[indentLevel].range(line.from));
-              decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
-            }
             const markerStart = line.from + leadingLen;
             const markerEnd = markerStart + qMatch[2].length;
             decorations.push(collapsedHiddenRange(markerStart, markerEnd));
@@ -1009,9 +1044,7 @@ function buildDecorations(
       decorations.push(headingLineDecos[level].range(line.from));
       if (leadingLen > 0) {
         const leadingPart = headingMatch[1];
-        const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-        const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-        const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+        const indentLevel = leadingWhitespaceIndentLevel(leadingPart);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
         decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
@@ -1025,45 +1058,40 @@ function buildDecorations(
       }
     }
 
-    // Blockquotes: only when not from tree. Decorate only after space: "> " (not ">text" or lone ">"). Never apply to blank lines.
+    // Blockquotes: leading indent + layout replace always (parser may not emit Blockquote while tree is "complete").
     const looksLikeBlockquoteLine = /^\s*> \s*/.test(text) || (text.trimStart().startsWith('> ') && text.trim().length > 0);
-    if (!useTreeForBlocks && line.text.trim().length > 0 && looksLikeBlockquoteLine && quoteMatch && quoteMatch[2]) {
-      const quoteLeading = quoteMatch[1];
-      const quoteMarker = quoteMatch[2];
-      // Decorate only after space: require "> " (not lone ">" at EOL)
-      const isBlockquote = quoteMarker === '> ';
-      if (!isBlockquote) {
-        // ">foo" etc. — skip so we don't apply blockquote prematurely
-      } else {
+    const blockquoteWithSpace = quoteMatch && quoteMatch[2] === '> ';
+    if (line.text.trim().length > 0 && looksLikeBlockquoteLine && blockquoteWithSpace) {
+      const quoteLeading = quoteMatch![1];
       const leadingLen = quoteLeading.length;
-      if (DEBUG_BLOCKQUOTE) console.log('[live-preview] blockquote (regex) line', i, ':', JSON.stringify(text));
-      decorations.push(blockquoteLineDeco.range(line.from));
       if (leadingLen > 0) {
-        const leadingPart = quoteLeading;
-        const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-        const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-        const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+        const indentLevel = leadingWhitespaceIndentLevel(quoteLeading);
         decorations.push(indentLineDecos[indentLevel].range(line.from));
         decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
+    }
+    // Line class + "> " hide only when not from tree (avoids duplicate marker replace).
+    if (!useTreeForBlocks && line.text.trim().length > 0 && looksLikeBlockquoteLine && blockquoteWithSpace) {
+      const quoteLeading = quoteMatch![1];
+      const quoteMarker = quoteMatch![2];
+      const leadingLen = quoteLeading.length;
+      if (DEBUG_BLOCKQUOTE) console.log('[live-preview] blockquote (regex) line', i, ':', JSON.stringify(text));
+      decorations.push(blockquoteLineDeco.range(line.from));
       const markerStart = line.from + leadingLen;
       const markerEnd = markerStart + quoteMarker.length;
       decorations.push(collapsedHiddenRange(markerStart, markerEnd));
-      }
     }
 
     const taskMatch = text.match(TASK_BULLET_REGEX);
     const orderedMatch = text.match(ORDERED_LIST_REGEX);
 
-    // Tab-indented plain paragraphs: indent + hidden so block indent and wrap align (same as list/blockquote).
+    // Tab-indented plain paragraphs: block padding + hidden leading so wraps align (same as list/blockquote).
     if (!headingMatch && !quoteMatch && !taskMatch && !orderedMatch && !listLineMap.has(line.from)) {
       const paraLeading = text.match(/^(\s+)/);
       if (paraLeading && line.text.trim().length > 0) {
         const leadingLen = paraLeading[1].length;
         const leadingPart = paraLeading[1];
-        const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-        const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-        const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
+        const indentLevel = leadingWhitespaceIndentLevel(leadingPart);
         if (indentLevel >= 1) {
           decorations.push(indentLineDecos[indentLevel].range(line.from));
           decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
@@ -1087,30 +1115,33 @@ function buildDecorations(
       }
       if (checkboxLine && resolved.taskState === 'scheduled') decorations.push(scheduledTaskLineDeco.range(line.from));
 
-      // Indented list: detect leading whitespace from line text (tree may put tab inside ListMark so markerFrom can be line.from).
+      // Marker replace: only the marker (after leading whitespace). Prefer regex bounds so the syntax
+      // tree ListMark span never swallows leading tabs (atomic replace would trap the caret).
       const leadingMatch = text.match(/^(\s+)/);
       const leadingLen = leadingMatch ? leadingMatch[1].length : 0;
-      const leadingPart = leadingLen ? text.slice(0, leadingLen) : '';
-      const tabCount = (leadingPart.match(/\t/g) ?? []).length;
-      const spaceCount = (leadingPart.match(/ /g) ?? []).length;
-      const indentLevel = Math.min(Math.max(tabCount, Math.floor(spaceCount / 4)), 3);
 
-      if (indentLevel >= 1 && leadingLen > 0) {
-        decorations.push(indentLineDecos[indentLevel].range(line.from));
+      let markerFrom: number;
+      let markerTo: number;
+      if (resolved.kind === 'ordered') {
+        markerFrom = resolved.markerFrom;
+        markerTo = resolved.markerTo;
+      } else if (taskMatch) {
+        const r = resolveListLineFromRegex(line, taskMatch);
+        markerFrom = r.markerFrom;
+        markerTo = r.markerTo;
+      } else {
+        markerFrom =
+          leadingLen > 0 ? line.from + leadingLen : resolved.markerFrom;
+        markerTo = resolved.markerTo;
+      }
+
+      const leadingPartForIndent = leadingLen ? text.slice(0, leadingLen) : '';
+      const listFileIndentLevel = leadingWhitespaceIndentLevel(leadingPartForIndent);
+      if (listFileIndentLevel >= 1 && leadingLen > 0) {
+        decorations.push(indentLineDecos[listFileIndentLevel].range(line.from));
         decorations.push(layoutPreservingHiddenRange(state, line.from, line.from + leadingLen));
       }
 
-      // Marker replace: only the marker (after leading whitespace), so we don't overlap with hidden.
-      // Ordered: always use regex-normalized markerFrom (same as tree normalize) so top-level and indented align.
-      // When cursor is anywhere in the marker (digits + delimiter + space), show raw edit; else widget.
-      // Digit-only would make top-level (easy to click digits) feel unlike indented (caret often on delim/space).
-      const markerFrom =
-        resolved.kind === 'ordered'
-          ? resolved.markerFrom
-          : leadingLen > 0
-            ? line.from + leadingLen
-            : resolved.markerFrom;
-      const markerTo = resolved.markerTo;
       if (markerFrom < markerTo && markerFrom >= line.from && markerTo <= line.to && markerTo <= doc.length) {
         if (resolved.kind === 'ordered') {
           const cursorInsideOrderedMarker =
@@ -1132,18 +1163,22 @@ function buildDecorations(
             );
           }
         } else {
-          decorations.push(
-            Decoration.replace({
-              widget: new MarkerWidget(
-              resolved.kind,
-              resolved.taskState,
-              resolved.taskBoxFrom,
-              resolved.taskBoxTo,
-              resolved.orderedMarkerText,
-            ),
-              inclusive: false,
-            }).range(markerFrom, markerTo),
-          );
+          const showRawListMarker =
+            !onCursorLine || cursorPos < markerFrom || cursorPos >= markerTo;
+          if (showRawListMarker) {
+            decorations.push(
+              Decoration.replace({
+                widget: new MarkerWidget(
+                  resolved.kind,
+                  resolved.taskState,
+                  resolved.taskBoxFrom,
+                  resolved.taskBoxTo,
+                  resolved.orderedMarkerText,
+                ),
+                inclusive: false,
+              }).range(markerFrom, markerTo),
+            );
+          }
         }
       }
     }
@@ -1365,6 +1400,37 @@ function buildDecorations(
   return Decoration.set(decorations, true);
 }
 
+/**
+ * Hide each topmatter line with its own replace (line text only, never `\n`). A single replace
+ * spanning line breaks is allowed from a StateField but still confuses line layout / line
+ * decorations — the first body line (e.g. `# Title`) can lose live-preview heading classes.
+ */
+function topmatterHideDecorationSet(state: EditorState): DecorationSet {
+  const tm = topmatterSliceRange(state.doc);
+  if (!tm || selectionIntersectsRange(state, tm.from, tm.to)) return Decoration.none;
+  const ranges: Range<Decoration>[] = [];
+  let pos = tm.from;
+  while (pos < tm.to) {
+    const line = state.doc.lineAt(pos);
+    const from = Math.max(line.from, tm.from);
+    const to = Math.min(line.to, tm.to);
+    if (from < to) ranges.push(collapsedHiddenRange(from, to));
+    pos = line.to + 1;
+  }
+  return ranges.length === 0 ? Decoration.none : Decoration.set(ranges, true);
+}
+
+export const topmatterHideField = StateField.define<DecorationSet>({
+  create(state) {
+    return topmatterHideDecorationSet(state);
+  },
+  update(deco, tr) {
+    if (!tr.docChanged && !tr.selection) return deco;
+    return topmatterHideDecorationSet(tr.state);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
 // --- Plugin that rebuilds decorations on every relevant change ---
 
 export const livePreview = ViewPlugin.fromClass(
@@ -1427,8 +1493,8 @@ export const livePreview = ViewPlugin.fromClass(
           this.decorations = Decoration.none;
         }
         scheduleRenumberIfLeftNumberZone();
-      } else if (sel.empty && newPos !== prevHead) {
-        scheduleRenumberIfLeftNumberZone();
+      } else if (update.selectionSet) {
+        if (sel.empty && newPos !== prevHead) scheduleRenumberIfLeftNumberZone();
         this.cursorPos = newPos;
         try {
           this.decorations = buildDecorations(update.state, this.cursorPos);

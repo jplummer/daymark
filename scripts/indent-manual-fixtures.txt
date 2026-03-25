@@ -1,0 +1,19 @@
+Top-level task
+- [ ] one
+
+Indented with tab before marker
+	- [ ] nested task
+	* bullet under tab
+	1. ordered under tab
+
+Heading with tab
+	## Indented heading
+
+Blockquote with tab
+	> Quoted line
+
+Plain tab-indented paragraph
+	Body only, no list marker.
+
+Double tab then bullet
+		- [ ] deep

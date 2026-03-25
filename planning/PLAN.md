@@ -70,6 +70,7 @@ Design rationale and discovered conventions live in KNOWLEDGE (Decisions, Learni
 - CM6 theme refactor: replace CSS overrides + `!important` with `EditorView.theme()` extension.
 
 **Content type rendering**
+- YAML topmatter (`---` … `---` at note start): hidden in live preview unless the selection intersects that range; on disk unchanged. **Later:** editable topmatter (dedicated panel, fold affordance with edit gesture, or front-matter field UI — pick when implementing).
 - Auto-task creation: typing `- ` (hyphen space) → `- [ ] ` (open task); `* ` stays plain bullet.
 - Priority markers (`!`/`!!`/`!!!`) rendering with increasing visual saturation.
 - Better numbered lists (indent adjusts to widest number in list).

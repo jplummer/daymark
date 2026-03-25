@@ -1,5 +1,12 @@
 import { readDir, readTextFile, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { noteIndex } from './note-index';
+import type { SidebarContextBridge } from './sidebar-context-menu';
+import { attachFolderContextMenu, attachNoteContextMenu } from './sidebar-context-menu';
+import type { TreeNode } from './sidebar-types';
+import { RECENT_FOLDER_KEY } from './sidebar-types';
+
+export type { TreeNode } from './sidebar-types';
+export { RECENT_FOLDER_KEY } from './sidebar-types';
 
 const NOTEPLAN_BASE = 'Library/Containers/co.noteplan.NotePlan-setapp/Data/Library/Application Support/co.noteplan.NotePlan-setapp';
 
@@ -11,14 +18,6 @@ const SPECIAL_FOLDER_ORDER = ['@Archive', '@Templates', '@Trash'];
 const RECENT_NOTES_MAX = 10;
 const RECENT_NOTES_DISPLAY = 5;
 const CALENDAR_PATH_SEGMENT = '/Calendar/';
-
-export interface TreeNode {
-  name: string;
-  title: string;
-  relPath: string;
-  isDir: boolean;
-  children?: TreeNode[];
-}
 
 async function extractTitle(relPath: string, filename: string): Promise<string> {
   try {
@@ -70,12 +69,10 @@ async function readTree(relDir: string, excludeSpecial = false): Promise<TreeNod
   return nodes;
 }
 
-// Recent is a virtual folder (same look/behaviour as Archive); key for open state and nav history
-export const RECENT_FOLDER_KEY = '__recent__';
-
 export type SidebarHandlers = {
   onOpenNote: (node: TreeNode) => void;
   onOpenFolder: (node: TreeNode) => void;
+  contextBridge?: SidebarContextBridge;
 };
 
 /** After `childContainer.classList.toggle('open')`, persist arrow and optional standard folder icon. */
@@ -129,6 +126,14 @@ function ensureSpecialFolderExpanded(
   persistSidebarState();
 }
 
+/**
+ * macOS Ctrl+click shows the context menu but WebKit often still fires a primary `click` with `ctrlKey`
+ * set — skip open/navigate/toggle so only the menu runs.
+ */
+function isTreeItemContextMenuAuxClick(e: MouseEvent): boolean {
+  return e.button !== 0 || e.ctrlKey;
+}
+
 // Icon mappings for special folders (including virtual Recent)
 const SPECIAL_FOLDER_ICONS: Record<string, string> = {
   '@Archive': 'ri-archive-line',
@@ -180,15 +185,19 @@ function renderTree(
 
       arrow.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (isTreeItemContextMenuAuxClick(e)) return;
         const nowOpen = childContainer.classList.toggle('open');
         afterFolderToggle(node.relPath, arrow, icon, nowOpen);
       });
 
       item.addEventListener('click', (e) => {
         if ((e.target as HTMLElement).closest('.tree-item-arrow')) return;
+        if (isTreeItemContextMenuAuxClick(e)) return;
         ensureNormalFolderExpanded(node.relPath, childContainer, arrow, icon);
         handlers.onOpenFolder(node);
       });
+
+      attachFolderContextMenu(item, node, handlers.contextBridge);
 
       folder.appendChild(item);
       folder.appendChild(childContainer);
@@ -218,7 +227,11 @@ function renderTree(
       item.appendChild(icon);
       item.appendChild(label);
 
-      item.addEventListener('click', () => handlers.onOpenNote(node));
+      item.addEventListener('click', (e) => {
+        if (isTreeItemContextMenuAuxClick(e)) return;
+        handlers.onOpenNote(node);
+      });
+      attachNoteContextMenu(item, node, handlers.contextBridge);
       container.appendChild(item);
     }
   }
@@ -258,15 +271,19 @@ function renderSpecialFolders(
 
     arrow.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (isTreeItemContextMenuAuxClick(e)) return;
       const nowOpen = childContainer.classList.toggle('open');
       afterFolderToggle(node.relPath, arrow, null, nowOpen);
     });
 
     item.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.tree-item-arrow')) return;
+      if (isTreeItemContextMenuAuxClick(e)) return;
       ensureSpecialFolderExpanded(node.relPath, childContainer, arrow);
       handlers.onOpenFolder(node);
     });
+
+    attachFolderContextMenu(item, node, handlers.contextBridge);
 
     const wrapper = document.createElement('div');
     wrapper.className = 'tree-folder';
